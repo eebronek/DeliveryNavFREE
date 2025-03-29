@@ -20,6 +20,7 @@ interface DeliveryMapProps {
   activeStepIndex?: number;
   title?: string;
   fullScreen?: boolean;
+  showRouteOverview?: boolean; // New prop to toggle between detailed navigation view and full route overview
 }
 
 export function DeliveryMap({ 
@@ -30,7 +31,8 @@ export function DeliveryMap({
   showActiveStepDirections = false,
   activeStepIndex = 0,
   title = "Route Preview",
-  fullScreen = false
+  fullScreen = false,
+  showRouteOverview = false
 }: DeliveryMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
@@ -210,10 +212,16 @@ export function DeliveryMap({
     // Calculate and set bounds considering current location
     const coords = addresses.map(a => ({ lat: a.position[0], lng: a.position[1] }));
     const bounds = calculateBounds(coords, currentRoute?.currentLocation);
+    
+    // If in route overview mode, zoom out to show all stops and route
+    // Otherwise, focus on current/active address with less padding
     map.current.fitBounds([
       [bounds.south, bounds.west],
       [bounds.north, bounds.east]
-    ], { padding: [40, 40] });
+    ], { 
+      padding: showRouteOverview ? [60, 60] : [40, 40],
+      maxZoom: showRouteOverview ? 14 : 17 // Lower maxZoom for overview means more zoomed out
+    });
     
     // Draw route path if available
     if (currentRoute && currentRoute.coordinates && currentRoute.coordinates.length > 0) {
@@ -293,17 +301,31 @@ export function DeliveryMap({
         }
       }
     }
-  }, [addresses, mapLoaded, currentRoute, activeAddressId, showActiveStepDirections, activeStepIndex]);
+  }, [addresses, mapLoaded, currentRoute, activeAddressId, showActiveStepDirections, activeStepIndex, showRouteOverview]);
   
-  // Additional effect to handle map size changes when fullScreen prop changes
+  // Additional effect to handle map size changes when fullScreen or overview mode changes
   useEffect(() => {
     if (map.current && mapLoaded) {
       // Force a resize event after a slight delay to ensure the container has been resized
       setTimeout(() => {
         map.current?.invalidateSize();
+        
+        // If we have coords, recalculate the bounds when toggling overview mode
+        if (addresses.length > 0) {
+          const coords = addresses.map(a => ({ lat: a.position[0], lng: a.position[1] }));
+          const bounds = calculateBounds(coords, currentRoute?.currentLocation);
+          
+          map.current.fitBounds([
+            [bounds.south, bounds.west],
+            [bounds.north, bounds.east]
+          ], { 
+            padding: showRouteOverview ? [60, 60] : [40, 40],
+            maxZoom: showRouteOverview ? 14 : 17 // Lower maxZoom for overview means more zoomed out
+          });
+        }
       }, 100);
     }
-  }, [fullScreen, mapLoaded]);
+  }, [fullScreen, mapLoaded, showRouteOverview, addresses, currentRoute]);
 
   return (
     <Card className={fullScreen ? "h-full" : ""}>
@@ -340,6 +362,20 @@ export function DeliveryMap({
                       <span className="ml-auto italic">{currentRoute.steps[activeStepIndex].streetName}</span>
                     )}
                   </div>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* Route overview indicator */}
+          {showRouteOverview && !showActiveStepDirections && (
+            <div className="absolute top-16 left-4 right-4 bg-white bg-opacity-90 rounded-lg p-2 shadow-lg border border-primary-100 max-w-xs mx-auto">
+              <div className="flex items-center justify-center text-center">
+                <div className="flex-1">
+                  <p className="font-medium text-primary-700">Route Overview</p>
+                  <p className="text-xs text-primary-600">
+                    Showing all {addresses.length} stops
+                  </p>
                 </div>
               </div>
             </div>

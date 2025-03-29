@@ -58,6 +58,7 @@ export default function NavigationPage() {
   const [activeStepIndex, setActiveStepIndex] = useState(0);
   const [showTurnByTurn, setShowTurnByTurn] = useState(false);
   const [fullScreenMap, setFullScreenMap] = useState(false);
+  const [showRouteOverview, setShowRouteOverview] = useState(false);
   const [isNotDeliveredDialogOpen, setIsNotDeliveredDialogOpen] = useState(false);
   const [isAllStopsDialogOpen, setIsAllStopsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -279,6 +280,19 @@ export default function NavigationPage() {
     return conditions[Math.floor(Math.random() * conditions.length)];
   };
   
+  // Toggle route overview
+  const toggleRouteOverview = () => {
+    setShowRouteOverview(!showRouteOverview);
+    
+    // If enabling overview, make sure we can see the whole map
+    if (!showRouteOverview) {
+      toast({
+        title: "Route Overview",
+        description: "Showing all stops on your route",
+      });
+    }
+  };
+  
   // Jump to a specific address
   const jumpToAddress = (index: number) => {
     setCurrentAddressIndex(index);
@@ -306,10 +320,11 @@ export default function NavigationPage() {
             currentRoute={routePath}
             isLoading={isLoading}
             activeAddressId={currentAddress?.id}
-            showActiveStepDirections={showTurnByTurn}
+            showActiveStepDirections={showTurnByTurn && !showRouteOverview}
             activeStepIndex={activeStepIndex}
             fullScreen={fullScreenMap}
-            title={fullScreenMap ? "Live Navigation" : "Route Preview"}
+            title={fullScreenMap ? (showRouteOverview ? "Route Overview" : "Live Navigation") : "Route Preview"}
+            showRouteOverview={showRouteOverview}
           />
           
           {/* Navigation Overlay */}
@@ -417,6 +432,19 @@ export default function NavigationPage() {
                     }
                   </svg>
                   {fullScreenMap ? "Exit Full Screen" : "Full Screen"}
+                </Button>
+                
+                {/* Route Overview Toggle Button (Similar to Google Maps example from screenshot) */}
+                <Button 
+                  variant={showRouteOverview ? "default" : "outline"}
+                  className={`text-sm col-span-2 ${showRouteOverview ? "bg-blue-500 hover:bg-blue-600" : ""}`}
+                  onClick={toggleRouteOverview}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-3 w-3 mr-1">
+                    <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+                    <polyline points="9 22 9 12 15 12 15 22"></polyline>
+                  </svg>
+                  {showRouteOverview ? "Hide Full Route" : "Show Full Route"}
                 </Button>
               </div>
               
