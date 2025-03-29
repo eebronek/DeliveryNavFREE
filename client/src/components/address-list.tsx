@@ -1,11 +1,10 @@
 import React from 'react';
 import { Address, DeliveryStatus, Priority } from '@shared/schema';
 import { cn } from '@/lib/utils';
-import { Clock, Pencil, Trash } from 'lucide-react';
+import { Clock, AlarmClock, Pencil, Trash } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
-import { optimizeRouteMutation } from '@/lib/queryClient';
 
 interface AddressListProps {
   addresses: Address[];
@@ -73,6 +72,12 @@ export function AddressList({
                     <Badge variant="outline" className="bg-success-100 text-success-800 border-success-200">
                       <Clock className="mr-1 h-3 w-3" /> {address.timeWindow}
                     </Badge>
+                    
+                    {address.exactDeliveryTime && (
+                      <Badge variant="outline" className="bg-warning-100 text-warning-800 border-warning-200 ml-1">
+                        <AlarmClock className="mr-1 h-3 w-3" /> {address.exactDeliveryTime}
+                      </Badge>
+                    )}
                     
                     <Badge 
                       variant="outline" 

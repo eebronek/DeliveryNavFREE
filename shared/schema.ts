@@ -19,6 +19,7 @@ export const addresses = pgTable("addresses", {
   latitude: text("latitude"),
   longitude: text("longitude"),
   timeWindow: text("time_window").default("Any time"),
+  exactDeliveryTime: text("exact_delivery_time"),
   priority: text("priority").default("Normal"),
   specialInstructions: text("special_instructions"),
   userId: integer("user_id").references(() => users.id),
@@ -30,6 +31,7 @@ export const addresses = pgTable("addresses", {
 export const insertAddressSchema = createInsertSchema(addresses).pick({
   fullAddress: true,
   timeWindow: true,
+  exactDeliveryTime: true,
   priority: true,
   specialInstructions: true,
   userId: true,

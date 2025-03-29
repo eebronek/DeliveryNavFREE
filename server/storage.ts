@@ -97,6 +97,7 @@ export class MemStorage implements IStorage {
       // Default values for optional fields
       specialInstructions: address.specialInstructions || null,
       timeWindow: address.timeWindow || TimeWindow.ANY,
+      exactDeliveryTime: address.exactDeliveryTime ?? null,
       priority: address.priority || Priority.NORMAL,
       userId: address.userId || null,
     };

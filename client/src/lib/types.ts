@@ -40,6 +40,7 @@ export interface Coordinates {
 export interface CSVRow {
   address: string;
   timeWindow?: string;
+  exactDeliveryTime?: string;
   priority?: string;
   specialInstructions?: string;
 }

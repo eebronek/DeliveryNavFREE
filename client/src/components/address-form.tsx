@@ -5,20 +5,22 @@ import { z } from 'zod';
 import { createInsertSchema } from 'drizzle-zod';
 import { addresses } from '@shared/schema';
 import { InsertAddress, Priority, TimeWindow } from '@shared/schema';
-import { Form, FormControl, FormField, FormItem, FormLabel } from '@/components/ui/form';
+import { Form, FormControl, FormField, FormItem, FormLabel, FormDescription } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, Clock } from 'lucide-react';
 
 const formSchema = createInsertSchema(addresses).pick({
   fullAddress: true,
   timeWindow: true,
+  exactDeliveryTime: true,
   priority: true,
   specialInstructions: true,
 }).extend({
   fullAddress: z.string().min(1, "Address is required"),
+  exactDeliveryTime: z.string().optional(),
 });
 
 type AddressFormValues = z.infer<typeof formSchema>;
@@ -35,6 +37,7 @@ export function AddressForm({ onSubmit, isSubmitting = false, defaultValues }: A
     defaultValues: {
       fullAddress: '',
       timeWindow: TimeWindow.ANY,
+      exactDeliveryTime: '',
       priority: Priority.NORMAL,
       specialInstructions: '',
       ...defaultValues,
@@ -42,12 +45,23 @@ export function AddressForm({ onSubmit, isSubmitting = false, defaultValues }: A
   });
 
   const handleSubmit = (data: AddressFormValues) => {
-    onSubmit(data as InsertAddress);
+    // Convert empty strings to null or default values where appropriate
+    const formattedData: InsertAddress = {
+      ...data,
+      exactDeliveryTime: data.exactDeliveryTime || null,
+      specialInstructions: data.specialInstructions || null,
+      timeWindow: data.timeWindow || TimeWindow.ANY,
+      priority: data.priority || Priority.NORMAL,
+    };
+    
+    onSubmit(formattedData);
+    
     if (!defaultValues) {
       // Reset form if adding a new address
       form.reset({
         fullAddress: '',
         timeWindow: TimeWindow.ANY,
+        exactDeliveryTime: '',
         priority: Priority.NORMAL,
         specialInstructions: '',
       });
@@ -82,7 +96,7 @@ export function AddressForm({ onSubmit, isSubmitting = false, defaultValues }: A
               <FormItem>
                 <FormLabel className="text-sm font-medium text-primary-700">Time Window</FormLabel>
                 <Select 
-                  value={field.value}
+                  value={field.value || ''}
                   onValueChange={field.onChange}
                 >
                   <FormControl>
@@ -108,7 +122,7 @@ export function AddressForm({ onSubmit, isSubmitting = false, defaultValues }: A
               <FormItem>
                 <FormLabel className="text-sm font-medium text-primary-700">Priority</FormLabel>
                 <Select 
-                  value={field.value}
+                  value={field.value || ''}
                   onValueChange={field.onChange}
                 >
                   <FormControl>
@@ -129,6 +143,32 @@ export function AddressForm({ onSubmit, isSubmitting = false, defaultValues }: A
         
         <FormField
           control={form.control}
+          name="exactDeliveryTime"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-sm font-medium text-primary-700">
+                <div className="flex items-center gap-2">
+                  <Clock className="h-4 w-4" />
+                  <span>Exact Delivery Time</span>
+                </div>
+              </FormLabel>
+              <FormControl>
+                <Input 
+                  type="time"
+                  placeholder="e.g. 14:30" 
+                  className="border" 
+                  {...field} 
+                />
+              </FormControl>
+              <FormDescription className="text-xs text-gray-500">
+                Set a specific delivery time for time-sensitive orders
+              </FormDescription>
+            </FormItem>
+          )}
+        />
+        
+        <FormField
+          control={form.control}
           name="specialInstructions"
           render={({ field }) => (
             <FormItem>
@@ -138,7 +178,8 @@ export function AddressForm({ onSubmit, isSubmitting = false, defaultValues }: A
                   placeholder="Any delivery notes" 
                   className="resize-none" 
                   rows={2}
-                  {...field} 
+                  {...field}
+                  value={field.value || ''}
                 />
               </FormControl>
             </FormItem>

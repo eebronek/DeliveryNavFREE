@@ -12,6 +12,7 @@ const csvRowSchema = z.object({
     TimeWindow.AFTERNOON, 
     TimeWindow.EVENING
   ]).optional().default(TimeWindow.ANY),
+  exactDeliveryTime: z.string().optional(),
   priority: z.enum([
     Priority.NORMAL, 
     Priority.HIGH, 
@@ -25,7 +26,7 @@ export function parseCSV(file: File): Promise<CSVRow[]> {
     parse(file, {
       header: true,
       skipEmptyLines: true,
-      complete: (results) => {
+      complete: (results: Papa.ParseResult<unknown>) => {
         try {
           const parsedRows: CSVRow[] = [];
           
@@ -38,6 +39,7 @@ export function parseCSV(file: File): Promise<CSVRow[]> {
               const validRow = csvRowSchema.parse({
                 address: typedRow.address || "",
                 timeWindow: typedRow.timeWindow || TimeWindow.ANY,
+                exactDeliveryTime: typedRow.exactDeliveryTime || "",
                 priority: typedRow.priority || Priority.NORMAL,
                 specialInstructions: typedRow.specialInstructions || ""
               });
@@ -53,7 +55,7 @@ export function parseCSV(file: File): Promise<CSVRow[]> {
           reject(error);
         }
       },
-      error: (error) => {
+      error: (error: Error) => {
         reject(error);
       }
     });
@@ -84,7 +86,7 @@ export function parsePastedText(text: string): CSVRow[] {
 
 // Helper function to generate a sample CSV template
 export function generateCSVTemplate(): string {
-  return 'address,timeWindow,priority,specialInstructions\n' +
-    '"123 Main St, Anytown, US",Any time,Normal,"Leave at door"\n' +
-    '"456 Oak Ave, Somewhere, US","Morning (8AM-12PM)",High,"Call customer"';
+  return 'address,timeWindow,exactDeliveryTime,priority,specialInstructions\n' +
+    '"123 Main St, Anytown, US",Any time,,Normal,"Leave at door"\n' +
+    '"456 Oak Ave, Somewhere, US","Morning (8AM-12PM)",14:30,High,"Call customer"';
 }

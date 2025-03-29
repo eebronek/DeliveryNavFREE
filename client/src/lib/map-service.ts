@@ -52,18 +52,81 @@ export async function calculateRoute(
       throw new Error("At least two addresses are required for route calculation");
     }
     
-    // Simulate route calculation
-    // For a free alternative, we're simulating the results rather than using a real API
+    // Order waypoints based on time constraints and settings
+    // First, separate addresses with exact delivery times from those without
+    const addressesWithDeliveryTime = addresses.filter(addr => addr.exactDeliveryTime);
+    const addressesWithoutDeliveryTime = addresses.filter(addr => !addr.exactDeliveryTime);
+    
+    // Sort addresses with delivery times by their delivery time
+    const sortedDeliveryTimeAddresses = [...addressesWithDeliveryTime].sort((a, b) => {
+      if (!a.exactDeliveryTime || !b.exactDeliveryTime) return 0;
+      return a.exactDeliveryTime.localeCompare(b.exactDeliveryTime);
+    });
+    
+    // For addresses without delivery times, we'll insert them between timed deliveries
+    // based on their proximity to the route
+    // This is a simplified approach - a real app would use a more sophisticated algorithm
+    
+    // Initialize the optimized waypoints with the sorted time-specific addresses
+    let optimizedWaypoints: AddressWithCoordinates[] = [...sortedDeliveryTimeAddresses];
+    
+    // If there are no time-specific addresses, use a simple approach
+    if (sortedDeliveryTimeAddresses.length === 0) {
+      optimizedWaypoints = [...addresses];
+    } else {
+      // Add addresses without specific times in between time-specific ones
+      // based on their proximity
+      // This is a simplified greedy algorithm
+      for (const addr of addressesWithoutDeliveryTime) {
+        if (optimizedWaypoints.length === 0) {
+          optimizedWaypoints.push(addr);
+          continue;
+        }
+        
+        let bestPosition = 0;
+        let shortestDetour = Number.MAX_VALUE;
+        
+        // Find the best position to insert this address
+        for (let i = 0; i <= optimizedWaypoints.length; i++) {
+          const prevAddr = i === 0 ? optimizedWaypoints[optimizedWaypoints.length - 1] : optimizedWaypoints[i - 1];
+          const nextAddr = i === optimizedWaypoints.length ? optimizedWaypoints[0] : optimizedWaypoints[i];
+          
+          // Calculate detour distance
+          const directDistance = calculateHaversineDistance(
+            prevAddr.position[0], prevAddr.position[1],
+            nextAddr.position[0], nextAddr.position[1]
+          );
+          
+          const detourDistance = calculateHaversineDistance(
+            prevAddr.position[0], prevAddr.position[1],
+            addr.position[0], addr.position[1]
+          ) + calculateHaversineDistance(
+            addr.position[0], addr.position[1],
+            nextAddr.position[0], nextAddr.position[1]
+          );
+          
+          const detour = detourDistance - directDistance;
+          
+          if (detour < shortestDetour) {
+            shortestDetour = detour;
+            bestPosition = i;
+          }
+        }
+        
+        // Insert at the best position
+        optimizedWaypoints.splice(bestPosition, 0, addr);
+      }
+    }
     
     // Create route coordinates by connecting the points directly (as the crow flies)
-    const routeCoordinates: [number, number][] = addresses.map(a => [a.position[1], a.position[0]]);
+    const routeCoordinates: [number, number][] = optimizedWaypoints.map(a => [a.position[1], a.position[0]]);
     
     // Calculate total distance (approximation using Haversine formula)
     let totalDistance = 0;
-    for (let i = 0; i < addresses.length - 1; i++) {
+    for (let i = 0; i < optimizedWaypoints.length - 1; i++) {
       totalDistance += calculateHaversineDistance(
-        addresses[i].position[0], addresses[i].position[1],
-        addresses[i + 1].position[0], addresses[i + 1].position[1]
+        optimizedWaypoints[i].position[0], optimizedWaypoints[i].position[1],
+        optimizedWaypoints[i + 1].position[0], optimizedWaypoints[i + 1].position[1]
       );
     }
     
@@ -76,11 +139,11 @@ export async function calculateRoute(
     // Calculate estimated fuel consumption (assuming 25 mpg)
     const fuelConsumption = (distanceInMiles / 25).toFixed(1);
     
-    // Generate simple instruction steps between each point
+    // Generate instruction steps based on the optimized waypoints
     const steps: RouteStep[] = [];
-    for (let i = 0; i < addresses.length - 1; i++) {
-      const fromAddress = addresses[i];
-      const toAddress = addresses[i + 1];
+    for (let i = 0; i < optimizedWaypoints.length - 1; i++) {
+      const fromAddress = optimizedWaypoints[i];
+      const toAddress = optimizedWaypoints[i + 1];
       const distance = calculateHaversineDistance(
         fromAddress.position[0], fromAddress.position[1],
         toAddress.position[0], toAddress.position[1]
@@ -89,16 +152,19 @@ export async function calculateRoute(
       // Estimate time based on distance
       const duration = (distance / 30) * 60; // minutes, assuming 30 mph
       
+      let instruction = `Drive from ${fromAddress.fullAddress} to ${toAddress.fullAddress}`;
+      
+      // Add special instruction for time-specific deliveries to arrive 3 minutes early
+      if (toAddress.exactDeliveryTime) {
+        instruction += ` (Arrive by ${toAddress.exactDeliveryTime}, aim to be 3 minutes early)`;
+      }
+      
       steps.push({
-        instruction: `Drive from ${fromAddress.fullAddress} to ${toAddress.fullAddress}`,
+        instruction,
         distance: `${distance.toFixed(1)} mi`,
         duration: `${Math.round(duration)} min`,
       });
     }
-    
-    // Order waypoints based on settings (simple implementation)
-    // In a real app, you'd use a proper TSP algorithm
-    const optimizedWaypoints = [...addresses];
     
     return {
       waypoints: optimizedWaypoints,

@@ -129,6 +129,7 @@ export function CSVImport({ onImport, isImporting }: CSVImportProps) {
     return rows.map(row => ({
       fullAddress: row.address,
       timeWindow: row.timeWindow || 'Any time',
+      exactDeliveryTime: row.exactDeliveryTime || null,
       priority: row.priority || 'Normal',
       specialInstructions: row.specialInstructions || '',
     }));
@@ -147,7 +148,7 @@ export function CSVImport({ onImport, isImporting }: CSVImportProps) {
           <DialogHeader>
             <DialogTitle>Import Addresses from CSV</DialogTitle>
             <DialogDescription>
-              Upload a CSV file with address information. Each row should have an address, and optionally time window, priority, and special instructions.
+              Upload a CSV file with address information. Each row should have an address, and optionally time window, exact delivery time, priority, and special instructions.
             </DialogDescription>
           </DialogHeader>
           
