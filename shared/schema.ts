@@ -46,6 +46,9 @@ export const routeSettings = pgTable("route_settings", {
   minimizeLeftTurns: boolean("minimize_left_turns").default(false),
   startingPoint: text("starting_point").default("Current Location"),
   returnToStart: boolean("return_to_start").default(false),
+  offlineMode: boolean("offline_mode").default(false),
+  offlineMapsLastUpdated: timestamp("offline_maps_last_updated"),
+  trafficDataProvider: text("traffic_data_provider").default("OpenData"),
   userId: integer("user_id").references(() => users.id),
 });
 
@@ -57,6 +60,8 @@ export const insertRouteSettingsSchema = createInsertSchema(routeSettings).pick(
   minimizeLeftTurns: true,
   startingPoint: true,
   returnToStart: true,
+  offlineMode: true,
+  trafficDataProvider: true,
   userId: true,
 });
 
@@ -111,4 +116,11 @@ export enum Priority {
   HIGH = "High",
   NORMAL = "Normal",
   LOW = "Low",
+}
+
+export enum TrafficDataProvider {
+  OPENDATA = "OpenData",
+  TOMTOM = "TomTom",
+  HERE = "HERE Maps",
+  COMMUNITY = "Community Updates"
 }
