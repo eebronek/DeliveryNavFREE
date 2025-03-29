@@ -19,23 +19,19 @@ export function Header() {
         <div className="flex items-center space-x-4">
           <ThemeSwitcher />
           
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/settings">
-              <a>
-                <Settings className="h-5 w-5" />
-                <span className="sr-only">Settings</span>
-              </a>
-            </Link>
-          </Button>
+          <Link href="/settings">
+            <Button variant="ghost" size="icon">
+              <Settings className="h-5 w-5" />
+              <span className="sr-only">Settings</span>
+            </Button>
+          </Link>
           
-          <Button variant="ghost" size="icon" asChild>
-            <Link href="/profile">
-              <a>
-                <User className="h-5 w-5" />
-                <span className="sr-only">Profile</span>
-              </a>
-            </Link>
-          </Button>
+          <Link href="/profile">
+            <Button variant="ghost" size="icon">
+              <User className="h-5 w-5" />
+              <span className="sr-only">Profile</span>
+            </Button>
+          </Link>
         </div>
       </div>
     </header>
