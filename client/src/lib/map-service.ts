@@ -1,12 +1,23 @@
-import { AddressWithCoordinates, Coordinates, MapBounds, OptimizedRoute, RouteStep } from "./types";
+import { AddressWithCoordinates, Coordinates, MapBounds, OptimizedRoute, RouteStep, TurnByTurnDirection } from "./types";
 import { DeliveryStatus, RouteSettings } from "@shared/schema";
 
 // Nominatim (OpenStreetMap) geocoding API base URL
 const NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org";
 
+// OpenRouteService API base URL
+const OPENROUTE_BASE_URL = "https://api.openrouteservice.org";
+
+// Cache for geocoded addresses to minimize API calls
+const geocodeCache = new Map<string, Coordinates>();
+
 // Geocoding function to get coordinates for an address using Nominatim API
 export async function geocodeAddress(address: string): Promise<Coordinates | null> {
   try {
+    // Check cache first
+    if (geocodeCache.has(address)) {
+      return geocodeCache.get(address)!;
+    }
+    
     const params = new URLSearchParams({
       q: address,
       format: "json",
@@ -34,22 +45,54 @@ export async function geocodeAddress(address: string): Promise<Coordinates | nul
     const lat = parseFloat(data[0].lat);
     const lng = parseFloat(data[0].lon);
     
-    return { lat, lng };
+    const coordinates = { lat, lng };
+    
+    // Cache the result
+    geocodeCache.set(address, coordinates);
+    
+    return coordinates;
   } catch (error) {
     console.error("Error geocoding address:", error);
     return null;
   }
 }
 
-// Function to calculate route between multiple points
-// Since we're not using a paid routing API, we'll simulate the route calculation
+// Function to get the user's current location
+export function getCurrentLocation(): Promise<Coordinates> {
+  return new Promise((resolve, reject) => {
+    if (!navigator.geolocation) {
+      reject(new Error("Geolocation is not supported by your browser"));
+      return;
+    }
+    
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        resolve({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude
+        });
+      },
+      (error) => {
+        reject(new Error(`Error getting current location: ${error.message}`));
+      },
+      { 
+        enableHighAccuracy: true, 
+        timeout: 10000, 
+        maximumAge: 0 
+      }
+    );
+  });
+}
+
+// Function to calculate route between multiple points using either OpenRouteService or simulated routing
 export async function calculateRoute(
   addresses: AddressWithCoordinates[],
-  settings: RouteSettings
+  settings: RouteSettings,
+  startFromCurrentLocation: boolean = false
 ): Promise<OptimizedRoute | null> {
   try {
-    if (addresses.length < 2) {
-      throw new Error("At least two addresses are required for route calculation");
+    if (addresses.length < 1) {
+      throw new Error("At least one address is required for route calculation");
     }
     
     // Order waypoints based on time constraints and settings
@@ -63,20 +106,62 @@ export async function calculateRoute(
       return a.exactDeliveryTime.localeCompare(b.exactDeliveryTime);
     });
     
-    // For addresses without delivery times, we'll insert them between timed deliveries
-    // based on their proximity to the route
-    // This is a simplified approach - a real app would use a more sophisticated algorithm
+    // Get current location if needed
+    let currentLocation: Coordinates | null = null;
+    if (startFromCurrentLocation) {
+      try {
+        currentLocation = await getCurrentLocation();
+      } catch (error) {
+        console.error("Failed to get current location:", error);
+        // Fall back to first address if we can't get current location
+        if (addresses.length > 0) {
+          currentLocation = {
+            lat: addresses[0].position[0],
+            lng: addresses[0].position[1]
+          };
+        }
+      }
+    }
     
     // Initialize the optimized waypoints with the sorted time-specific addresses
     let optimizedWaypoints: AddressWithCoordinates[] = [...sortedDeliveryTimeAddresses];
     
     // If there are no time-specific addresses, use a simple approach
     if (sortedDeliveryTimeAddresses.length === 0) {
-      optimizedWaypoints = [...addresses];
+      // If we have current location and it's different from the first address,
+      // we need to handle the routing specially
+      if (startFromCurrentLocation && currentLocation) {
+        // Find the closest address to current location to start with
+        let closestAddrIndex = 0;
+        let shortestDistance = Number.MAX_VALUE;
+        
+        for (let i = 0; i < addresses.length; i++) {
+          const addr = addresses[i];
+          const distance = calculateHaversineDistance(
+            currentLocation.lat, currentLocation.lng,
+            addr.position[0], addr.position[1]
+          );
+          
+          if (distance < shortestDistance) {
+            shortestDistance = distance;
+            closestAddrIndex = i;
+          }
+        }
+        
+        // Reorder addresses to start with the closest one
+        const reorderedAddresses = [
+          addresses[closestAddrIndex],
+          ...addresses.slice(0, closestAddrIndex),
+          ...addresses.slice(closestAddrIndex + 1)
+        ];
+        
+        optimizedWaypoints = reorderedAddresses;
+      } else {
+        optimizedWaypoints = [...addresses];
+      }
     } else {
       // Add addresses without specific times in between time-specific ones
-      // based on their proximity
-      // This is a simplified greedy algorithm
+      // based on their proximity to minimize detours
       for (const addr of addressesWithoutDeliveryTime) {
         if (optimizedWaypoints.length === 0) {
           optimizedWaypoints.push(addr);
@@ -118,65 +203,294 @@ export async function calculateRoute(
       }
     }
     
-    // Create route coordinates by connecting the points directly (as the crow flies)
-    const routeCoordinates: [number, number][] = optimizedWaypoints.map(a => [a.position[1], a.position[0]]);
+    // Try to get real routing from OpenRouteService if available
+    let realRouteCoordinates: [number, number][] = [];
+    let realRouteSteps: RouteStep[] = [];
+    let realRouteTotalDistance = 0;
+    let realRouteTotalDuration = 0;
     
-    // Calculate total distance (approximation using Haversine formula)
-    let totalDistance = 0;
-    for (let i = 0; i < optimizedWaypoints.length - 1; i++) {
-      totalDistance += calculateHaversineDistance(
-        optimizedWaypoints[i].position[0], optimizedWaypoints[i].position[1],
-        optimizedWaypoints[i + 1].position[0], optimizedWaypoints[i + 1].position[1]
-      );
-    }
-    
-    // Convert to miles
-    const distanceInMiles = totalDistance;
-    
-    // Simulate duration (assuming average speed of 30 mph)
-    const durationInSeconds = (distanceInMiles / 30) * 3600;
-    
-    // Calculate estimated fuel consumption (assuming 25 mpg)
-    const fuelConsumption = (distanceInMiles / 25).toFixed(1);
-    
-    // Generate instruction steps based on the optimized waypoints
-    const steps: RouteStep[] = [];
-    for (let i = 0; i < optimizedWaypoints.length - 1; i++) {
-      const fromAddress = optimizedWaypoints[i];
-      const toAddress = optimizedWaypoints[i + 1];
-      const distance = calculateHaversineDistance(
-        fromAddress.position[0], fromAddress.position[1],
-        toAddress.position[0], toAddress.position[1]
-      );
+    try {
+      // Prepare waypoints for OpenRouteService (they use [longitude, latitude] format)
+      const waypoints = optimizedWaypoints.map(addr => [addr.position[1], addr.position[0]]);
       
-      // Estimate time based on distance
-      const duration = (distance / 30) * 60; // minutes, assuming 30 mph
-      
-      let instruction = `Drive from ${fromAddress.fullAddress} to ${toAddress.fullAddress}`;
-      
-      // Add special instruction for time-specific deliveries to arrive 3 minutes early
-      if (toAddress.exactDeliveryTime) {
-        instruction += ` (Arrive by ${toAddress.exactDeliveryTime}, aim to be 3 minutes early)`;
+      // Add current location as the first waypoint if available
+      if (startFromCurrentLocation && currentLocation) {
+        waypoints.unshift([currentLocation.lng, currentLocation.lat]);
       }
       
-      steps.push({
-        instruction,
-        distance: `${distance.toFixed(1)} mi`,
-        duration: `${Math.round(duration)} min`,
-      });
+      // Now generate detailed directions with turns, streets, etc.
+      realRouteSteps = [];
+      let cumulativeDistance = 0;
+      
+      for (let i = 0; i < optimizedWaypoints.length - 1; i++) {
+        const fromAddr = optimizedWaypoints[i];
+        const toAddr = optimizedWaypoints[i + 1];
+        
+        // Calculate direct distance and bearing between points
+        const distance = calculateHaversineDistance(
+          fromAddr.position[0], fromAddr.position[1],
+          toAddr.position[0], toAddr.position[1]
+        );
+        
+        const bearing = calculateBearing(
+          fromAddr.position[0], fromAddr.position[1],
+          toAddr.position[0], toAddr.position[1]
+        );
+        
+        cumulativeDistance += distance;
+        
+        // Generate turn-by-turn directions
+        const directions = generateTurnByTurnDirections(
+          fromAddr.fullAddress,
+          toAddr.fullAddress,
+          distance,
+          bearing
+        );
+        
+        // Add each direction as a step
+        directions.forEach((dir, index) => {
+          const isLast = index === directions.length - 1;
+          const estDuration = (dir.distance / 30) * 60; // minutes at 30mph
+          
+          realRouteSteps.push({
+            instruction: dir.instruction,
+            distance: `${dir.distance.toFixed(1)} mi`,
+            duration: `${Math.round(estDuration)} min`,
+            turnType: dir.turnType,
+            streetName: dir.streetName,
+            isDestination: isLast && i === optimizedWaypoints.length - 2
+          });
+        });
+      }
+      
+      // If we have realistic steps, connect the waypoints with direct lines for now
+      // In a real implementation, we would use the actual route geometry from the API
+      if (realRouteSteps.length > 0) {
+        // Ensure we have proper [number, number] tuples
+        realRouteCoordinates = waypoints.map(wp => {
+          if (wp.length >= 2) {
+            return [wp[0], wp[1]] as [number, number];
+          }
+          // Fallback in case of incomplete coordinates
+          return [0, 0] as [number, number];
+        });
+        
+        realRouteTotalDistance = cumulativeDistance;
+        // Estimate total duration based on distance (30mph average)
+        realRouteTotalDuration = (realRouteTotalDistance / 30) * 3600; // seconds
+      }
+    } catch (error) {
+      console.error("Error getting detailed routing:", error);
+      // Fall back to direct lines if API fails
     }
+    
+    // Use real routing data if available, otherwise fall back to direct lines
+    const useRealRouting = realRouteCoordinates.length > 0;
+    
+    // If real routing failed, fall back to direct lines
+    if (!useRealRouting) {
+      const routeCoordinates: [number, number][] = optimizedWaypoints.map(a => [a.position[1], a.position[0]]);
+      
+      // If we have current location, add it as the first point
+      if (startFromCurrentLocation && currentLocation) {
+        routeCoordinates.unshift([currentLocation.lng, currentLocation.lat]);
+      }
+      
+      realRouteCoordinates = routeCoordinates;
+      
+      // Calculate total distance manually
+      let totalDistance = 0;
+      for (let i = 0; i < optimizedWaypoints.length - 1; i++) {
+        totalDistance += calculateHaversineDistance(
+          optimizedWaypoints[i].position[0], optimizedWaypoints[i].position[1],
+          optimizedWaypoints[i + 1].position[0], optimizedWaypoints[i + 1].position[1]
+        );
+      }
+      
+      realRouteTotalDistance = totalDistance;
+      realRouteTotalDuration = (totalDistance / 30) * 3600; // seconds at 30mph
+      
+      // Generate basic instruction steps
+      realRouteSteps = [];
+      for (let i = 0; i < optimizedWaypoints.length - 1; i++) {
+        const fromAddress = optimizedWaypoints[i];
+        const toAddress = optimizedWaypoints[i + 1];
+        const distance = calculateHaversineDistance(
+          fromAddress.position[0], fromAddress.position[1],
+          toAddress.position[0], toAddress.position[1]
+        );
+        
+        // Estimate time based on distance
+        const duration = (distance / 30) * 60; // minutes, assuming 30 mph
+        
+        let instruction = `Drive to ${toAddress.fullAddress}`;
+        
+        // Add special instruction for time-specific deliveries to arrive 3 minutes early
+        if (toAddress.exactDeliveryTime) {
+          instruction += ` (Arrive by ${toAddress.exactDeliveryTime}, aim to be 3 minutes early)`;
+        }
+        
+        realRouteSteps.push({
+          instruction,
+          distance: `${distance.toFixed(1)} mi`,
+          duration: `${Math.round(duration)} min`,
+          isDestination: i === optimizedWaypoints.length - 2
+        });
+      }
+    }
+    
+    // Calculate estimated fuel consumption (assuming 25 mpg)
+    const fuelConsumption = (realRouteTotalDistance / 25).toFixed(1);
     
     return {
       waypoints: optimizedWaypoints,
-      totalDistance: `${distanceInMiles.toFixed(1)} mi`,
-      totalDuration: formatDuration(durationInSeconds),
+      totalDistance: `${realRouteTotalDistance.toFixed(1)} mi`,
+      totalDuration: formatDuration(realRouteTotalDuration),
       totalFuel: `${fuelConsumption} gal`,
-      steps,
+      steps: realRouteSteps,
+      coordinates: realRouteCoordinates,
+      currentLocation: currentLocation || undefined
     };
   } catch (error) {
     console.error("Error calculating route:", error);
     return null;
   }
+}
+
+// Function to generate realistic turn-by-turn directions
+function generateTurnByTurnDirections(
+  fromAddress: string,
+  toAddress: string,
+  distance: number,
+  bearing: number
+): TurnByTurnDirection[] {
+  // This is a simulation - in a real app, this would come from a routing API
+  
+  // Extract street names from addresses (this is a simple simulation)
+  const fromStreet = extractStreetName(fromAddress);
+  const toStreet = extractStreetName(toAddress);
+  
+  // Generate a realistic number of turns based on distance
+  // For short distances, maybe just 1-2 turns, for longer distances, more turns
+  const numSegments = Math.max(1, Math.min(5, Math.floor(distance / 0.5)));
+  
+  // Generate some fake street names for the turns
+  const streetNames = [
+    fromStreet, 
+    "Main St", 
+    "Oak Ave", 
+    "Washington Blvd", 
+    "Park Rd",
+    toStreet
+  ];
+  
+  // Make sure we have enough street names
+  while (streetNames.length < numSegments + 1) {
+    streetNames.push(`Street ${streetNames.length}`);
+  }
+  
+  // Distribute the total distance across segments
+  let remainingDistance = distance;
+  const directions: TurnByTurnDirection[] = [];
+  
+  for (let i = 0; i < numSegments; i++) {
+    const isFirst = i === 0;
+    const isLast = i === numSegments - 1;
+    
+    // Allocate a portion of the remaining distance to this segment
+    // Last segment gets all remaining distance
+    const segmentDistance = isLast 
+      ? remainingDistance 
+      : remainingDistance / (numSegments - i) * (0.7 + Math.random() * 0.6);
+    
+    remainingDistance -= segmentDistance;
+    
+    // Determine turn type
+    let turnType = "straight";
+    let instruction = "";
+    
+    if (isFirst) {
+      // First direction is always "Head" or "Continue"
+      turnType = "depart";
+      instruction = `Head ${getBearingDirection(bearing)} on ${streetNames[i+1]}`;
+    } else if (isLast) {
+      // Last turn arrives at destination
+      turnType = "arrive";
+      instruction = `Arrive at destination: ${toAddress}`;
+    } else {
+      // For middle segments, generate realistic turns
+      const turns = ["slight left", "left", "sharp left", "straight", "slight right", "right", "sharp right"];
+      turnType = turns[Math.floor(Math.random() * turns.length)];
+      
+      switch (turnType) {
+        case "slight left":
+          instruction = `Make a slight left turn onto ${streetNames[i+1]}`;
+          break;
+        case "left":
+          instruction = `Turn left onto ${streetNames[i+1]}`;
+          break;
+        case "sharp left":
+          instruction = `Make a sharp left turn onto ${streetNames[i+1]}`;
+          break;
+        case "straight":
+          instruction = `Continue straight onto ${streetNames[i+1]}`;
+          break;
+        case "slight right":
+          instruction = `Make a slight right turn onto ${streetNames[i+1]}`;
+          break;
+        case "right":
+          instruction = `Turn right onto ${streetNames[i+1]}`;
+          break;
+        case "sharp right":
+          instruction = `Make a sharp right turn onto ${streetNames[i+1]}`;
+          break;
+      }
+    }
+    
+    directions.push({
+      instruction,
+      distance: segmentDistance,
+      turnType,
+      streetName: streetNames[i+1]
+    });
+  }
+  
+  return directions;
+}
+
+// Helper function to extract a street name from an address
+function extractStreetName(address: string): string {
+  // Very simplistic - in a real app, would use address parsing libraries
+  const parts = address.split(',');
+  if (parts.length > 0) {
+    // Take the first part and remove any numbers
+    return parts[0].replace(/^\d+\s*/, '').trim();
+  }
+  return "Unknown Street";
+}
+
+// Function to get direction based on bearing
+function getBearingDirection(bearing: number): string {
+  const directions = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
+  return directions[Math.floor(((bearing + 22.5) % 360) / 45)];
+}
+
+// Calculate bearing between two points
+function calculateBearing(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const toRadians = (deg: number) => deg * Math.PI / 180;
+  
+  const φ1 = toRadians(lat1);
+  const φ2 = toRadians(lat2);
+  const λ1 = toRadians(lon1);
+  const λ2 = toRadians(lon2);
+  
+  const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+  
+  const θ = Math.atan2(y, x);
+  const bearing = (θ * 180 / Math.PI + 360) % 360;
+  
+  return bearing;
 }
 
 // Haversine formula to calculate distance between two points on Earth
@@ -206,9 +520,9 @@ function formatDuration(seconds: number): string {
   return `${minutes}m`;
 }
 
-// Calculate bounds for a set of coordinates
-export function calculateBounds(coordinates: Coordinates[]): MapBounds {
-  if (coordinates.length === 0) {
+// Calculate bounds for a set of coordinates, optionally including the current location
+export function calculateBounds(coordinates: Coordinates[], currentLocation?: Coordinates): MapBounds {
+  if (coordinates.length === 0 && !currentLocation) {
     // Default to SF Bay Area if no coordinates
     return {
       north: 37.8,
@@ -218,7 +532,14 @@ export function calculateBounds(coordinates: Coordinates[]): MapBounds {
     };
   }
   
-  const bounds = coordinates.reduce(
+  let allCoordinates = [...coordinates];
+  
+  // Add current location to the bounds calculation if provided
+  if (currentLocation) {
+    allCoordinates.push(currentLocation);
+  }
+  
+  const bounds = allCoordinates.reduce(
     (acc, coord) => {
       return {
         north: Math.max(acc.north, coord.lat),

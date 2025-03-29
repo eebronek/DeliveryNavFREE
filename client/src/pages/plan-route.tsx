@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useLocation, useRoute } from 'wouter';
 import { TabNavigation } from '@/components/tab-navigation';
 import { Header } from '@/components/layout/header';
+import { AdBanner } from '@/components/ad-banner';
 import { AddressForm } from '@/components/address-form';
 import { AddressList } from '@/components/address-list';
 import { DeliveryMap } from '@/components/delivery-map';
@@ -211,6 +212,13 @@ export default function PlanRoute() {
       <Header />
       
       <TabNavigation tabs={TABS} />
+      
+      {/* Non-intrusive ad banner */}
+      <div className="bg-gray-50 border-b border-t border-gray-200">
+        <div className="max-w-screen-lg mx-auto py-2 flex justify-center">
+          <AdBanner size="leaderboard" />
+        </div>
+      </div>
       
       <main className="flex-1">
         <div className="container mx-auto px-4 sm:px-6 py-6">

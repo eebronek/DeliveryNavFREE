@@ -6,8 +6,9 @@ import { DeliveryMap } from '@/components/delivery-map';
 import { useAddresses } from '@/hooks/use-addresses';
 import { useRouteSettings, useRoutes } from '@/hooks/use-route';
 import { geocodeAddress, calculateRoute } from '@/lib/map-service';
-import { AddressWithCoordinates } from '@/lib/types';
+import { AddressWithCoordinates, RouteStep, Coordinates } from '@/lib/types';
 import { Address, DeliveryStatus } from '@shared/schema';
+import { AdBanner } from '@/components/ad-banner';
 import { Button } from '@/components/ui/button';
 import { 
   ArrowLeft, 
@@ -49,7 +50,14 @@ export default function NavigationPage() {
   const [, navigate] = useLocation();
   const [currentAddressIndex, setCurrentAddressIndex] = useState(0);
   const [addressesWithCoordinates, setAddressesWithCoordinates] = useState<AddressWithCoordinates[]>([]);
-  const [routePath, setRoutePath] = useState<{ coordinates: [number, number][] } | undefined>();
+  const [routePath, setRoutePath] = useState<{ 
+    coordinates: [number, number][]; 
+    steps?: RouteStep[];
+    currentLocation?: Coordinates;
+  } | undefined>();
+  const [activeStepIndex, setActiveStepIndex] = useState(0);
+  const [showTurnByTurn, setShowTurnByTurn] = useState(false);
+  const [fullScreenMap, setFullScreenMap] = useState(false);
   const [isNotDeliveredDialogOpen, setIsNotDeliveredDialogOpen] = useState(false);
   const [isAllStopsDialogOpen, setIsAllStopsDialogOpen] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -124,14 +132,37 @@ export default function NavigationPage() {
         
         setAddressesWithCoordinates(geocodedAddresses);
         
-        // Calculate route if we have at least 2 addresses and route settings
-        if (geocodedAddresses.length >= 2 && routeSettings) {
-          const route = await calculateRoute(geocodedAddresses, routeSettings);
-          
-          if (route) {
-            // Get coordinates for route path
-            const coordinates = route.waypoints.map(wp => [wp.position[1], wp.position[0]] as [number, number]);
-            setRoutePath({ coordinates });
+        // Calculate route if we have at least 1 address and route settings
+        if (geocodedAddresses.length >= 1 && routeSettings) {
+          try {
+            // Get the user's current location and calculate route from there
+            const route = await calculateRoute(
+              geocodedAddresses, 
+              routeSettings,
+              true // start from current location
+            );
+            
+            if (route) {
+              setRoutePath({
+                coordinates: route.coordinates || [],
+                steps: route.steps,
+                currentLocation: route.currentLocation
+              });
+              
+              // Reset active step index when route changes
+              setActiveStepIndex(0);
+            }
+          } catch (error) {
+            console.error('Error calculating route with current location:', error);
+            
+            // Fall back to route without current location
+            const fallbackRoute = await calculateRoute(geocodedAddresses, routeSettings);
+            if (fallbackRoute) {
+              setRoutePath({
+                coordinates: fallbackRoute.coordinates || [],
+                steps: fallbackRoute.steps
+              });
+            }
           }
         }
       } catch (error) {
@@ -255,6 +286,13 @@ export default function NavigationPage() {
       
       <TabNavigation tabs={TABS} />
       
+      {/* Non-intrusive ad banner */}
+      <div className="bg-gray-50 border-b border-t border-gray-200">
+        <div className="max-w-screen-lg mx-auto py-2 flex justify-center">
+          <AdBanner size="leaderboard" />
+        </div>
+      </div>
+      
       <main className="flex-1">
         <div className="h-[calc(100vh-120px)] relative">
           {/* Map with active navigation */}
@@ -263,6 +301,10 @@ export default function NavigationPage() {
             currentRoute={routePath}
             isLoading={isLoading}
             activeAddressId={currentAddress?.id}
+            showActiveStepDirections={showTurnByTurn}
+            activeStepIndex={activeStepIndex}
+            fullScreen={fullScreenMap}
+            title={fullScreenMap ? "Live Navigation" : "Route Preview"}
           />
           
           {/* Navigation Overlay */}
@@ -340,26 +382,64 @@ export default function NavigationPage() {
                 </Button>
               </div>
               
-              <div className="mt-3 flex justify-between items-center">
+              <div className="mt-3 grid grid-cols-2 gap-2">
                 <Button variant="ghost" className="text-sm" onClick={() => setIsNotDeliveredDialogOpen(true)}>
                   <AlertTriangle className="mr-1 h-3 w-3" /> Not Delivered
                 </Button>
                 
-                <div className="flex items-center space-x-1">
-                  {addresses.map((_, i) => (
-                    <span 
-                      key={i} 
-                      className={`h-2 w-2 rounded-full ${
-                        i === currentAddressIndex ? 'bg-primary-900' : 'bg-primary-300'
-                      }`}
-                    />
-                  ))}
-                </div>
-                
                 <Button variant="ghost" className="text-sm" onClick={() => setIsAllStopsDialogOpen(true)}>
                   <List className="mr-1 h-3 w-3" /> All Stops
                 </Button>
+                
+                <Button 
+                  variant={showTurnByTurn ? "default" : "outline"}
+                  className={`text-sm ${showTurnByTurn ? "bg-blue-500 hover:bg-blue-600" : ""}`}
+                  onClick={() => setShowTurnByTurn(!showTurnByTurn)}
+                >
+                  <Navigation2 className="mr-1 h-3 w-3" />
+                  {showTurnByTurn ? "Exit Turn-by-Turn" : "Start Turn-by-Turn"}
+                </Button>
+                
+                <Button 
+                  variant={fullScreenMap ? "default" : "outline"}
+                  className={`text-sm ${fullScreenMap ? "bg-blue-500 hover:bg-blue-600" : ""}`}
+                  onClick={() => setFullScreenMap(!fullScreenMap)}
+                >
+                  <svg className="h-3 w-3 mr-1" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    {fullScreenMap 
+                      ? <path d="M8 3v3a2 2 0 0 1-2 2H3m18 0h-3a2 2 0 0 1-2-2V3m0 18v-3a2 2 0 0 1 2-2h3M3 16h3a2 2 0 0 1 2 2v3" />
+                      : <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
+                    }
+                  </svg>
+                  {fullScreenMap ? "Exit Full Screen" : "Full Screen"}
+                </Button>
               </div>
+              
+              {showTurnByTurn && routePath?.steps && routePath.steps.length > 0 && (
+                <div className="mt-3 flex justify-between items-center">
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveStepIndex(Math.max(0, activeStepIndex - 1))}
+                    disabled={activeStepIndex === 0}
+                  >
+                    <ArrowLeft className="h-3 w-3 mr-1" /> Prev Step
+                  </Button>
+                  
+                  <span className="text-xs font-medium text-primary-700">
+                    Step {activeStepIndex + 1} of {routePath.steps.length}
+                  </span>
+                  
+                  <Button 
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setActiveStepIndex(Math.min((routePath.steps?.length || 0) - 1, activeStepIndex + 1))}
+                    disabled={activeStepIndex === (routePath.steps?.length || 0) - 1}
+                  >
+                    Next Step <ArrowRight className="h-3 w-3 ml-1" />
+                  </Button>
+                </div>
+              )}
             </Card>
           </div>
         </div>

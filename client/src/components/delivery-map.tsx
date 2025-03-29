@@ -1,9 +1,9 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Card, CardContent, CardHeader } from '@/components/ui/card';
-import { AddressWithCoordinates, MapBounds } from '@/lib/types';
+import { AddressWithCoordinates, Coordinates, MapBounds, RouteStep } from '@/lib/types';
 import { calculateBounds } from '@/lib/map-service';
 import { Address } from '@shared/schema';
-import { Loader } from 'lucide-react';
+import { Loader, Navigation2 } from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -11,15 +11,31 @@ interface DeliveryMapProps {
   addresses: AddressWithCoordinates[];
   currentRoute?: {
     coordinates: [number, number][];
+    currentLocation?: Coordinates;
+    steps?: RouteStep[];
   };
   isLoading?: boolean;
   activeAddressId?: number;
+  showActiveStepDirections?: boolean;
+  activeStepIndex?: number;
+  title?: string;
+  fullScreen?: boolean;
 }
 
-export function DeliveryMap({ addresses, currentRoute, isLoading = false, activeAddressId }: DeliveryMapProps) {
+export function DeliveryMap({ 
+  addresses, 
+  currentRoute, 
+  isLoading = false, 
+  activeAddressId,
+  showActiveStepDirections = false,
+  activeStepIndex = 0,
+  title = "Route Preview",
+  fullScreen = false
+}: DeliveryMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<L.Map | null>(null);
   const markersRef = useRef<L.Marker[]>([]);
+  const currentLocationMarkerRef = useRef<L.Marker | null>(null);
   const routeLayerRef = useRef<L.Polyline | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
 
@@ -38,6 +54,52 @@ export function DeliveryMap({ addresses, currentRoute, isLoading = false, active
     
     // Add scale control
     L.control.scale().addTo(map.current);
+    
+    // Add locate control to find user's current position
+    const addLocateControl = (map: L.Map) => {
+      // Create a custom button element
+      const controlDiv = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      const button = L.DomUtil.create('a', '', controlDiv);
+      
+      button.href = '#';
+      button.title = 'Find my location';
+      button.style.display = 'flex';
+      button.style.alignItems = 'center';
+      button.style.justifyContent = 'center';
+      button.style.width = '30px';
+      button.style.height = '30px';
+      
+      // Set button content
+      button.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <circle cx="12" cy="12" r="10"></circle>
+          <circle cx="12" cy="12" r="3"></circle>
+        </svg>
+      `;
+      
+      // Add click event
+      L.DomEvent.on(button, 'click', (e) => {
+        L.DomEvent.preventDefault(e);
+        
+        if (navigator.geolocation) {
+          navigator.geolocation.getCurrentPosition(
+            (position) => {
+              map.setView([position.coords.latitude, position.coords.longitude], 16);
+            },
+            (error) => {
+              console.error("Error getting current location:", error);
+            }
+          );
+        }
+      });
+      
+      return controlDiv;
+    };
+    
+    // Add the custom control to the map
+    const locateControl = L.control({position: 'topleft'});
+    locateControl.onAdd = addLocateControl;
+    locateControl.addTo(map.current);
     
     setMapLoaded(true);
     
@@ -58,13 +120,19 @@ export function DeliveryMap({ addresses, currentRoute, isLoading = false, active
     markersRef.current.forEach(marker => marker.remove());
     markersRef.current = [];
     
+    // Clear previous current location marker
+    if (currentLocationMarkerRef.current) {
+      currentLocationMarkerRef.current.remove();
+      currentLocationMarkerRef.current = null;
+    }
+    
     // Clear previous route
     if (routeLayerRef.current) {
       routeLayerRef.current.remove();
       routeLayerRef.current = null;
     }
     
-    if (addresses.length === 0) return;
+    if (addresses.length === 0 && !currentRoute?.currentLocation) return;
     
     // Create custom marker icon
     const createMarkerIcon = (index: number, isActive: boolean) => {
@@ -87,6 +155,34 @@ export function DeliveryMap({ addresses, currentRoute, isLoading = false, active
       });
     };
     
+    // Create current location marker icon
+    const createCurrentLocationIcon = () => {
+      return L.divIcon({
+        className: 'current-location-marker',
+        html: `<div style="
+          width: 20px;
+          height: 20px;
+          border-radius: 50%;
+          background-color: #3b82f6;
+          border: 2px solid white;
+          box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.4), 0 0 10px rgba(59, 130, 246, 0.4);
+        "></div>`,
+        iconSize: [20, 20],
+        iconAnchor: [10, 10]
+      });
+    };
+    
+    // Add current location marker if available
+    if (currentRoute?.currentLocation) {
+      const { lat, lng } = currentRoute.currentLocation;
+      currentLocationMarkerRef.current = L.marker([lat, lng], {
+        icon: createCurrentLocationIcon(),
+        zIndexOffset: 1000
+      }).addTo(map.current);
+      
+      currentLocationMarkerRef.current.bindPopup("Your current location");
+    }
+    
     // Add markers for each address
     addresses.forEach((address, index) => {
       const isActive = address.id === activeAddressId;
@@ -97,43 +193,79 @@ export function DeliveryMap({ addresses, currentRoute, isLoading = false, active
       // Add popup with address info
       marker.bindPopup(
         `<strong>${address.fullAddress}</strong>` +
-        (address.specialInstructions ? `<br>${address.specialInstructions}` : '')
+        (address.specialInstructions ? `<br>${address.specialInstructions}` : '') +
+        (address.exactDeliveryTime ? `<br>Delivery time: ${address.exactDeliveryTime}` : '')
       );
       
       markersRef.current.push(marker);
     });
     
-    // Calculate and set bounds
+    // Calculate and set bounds considering current location
     const coords = addresses.map(a => ({ lat: a.position[0], lng: a.position[1] }));
-    const bounds = calculateBounds(coords);
+    const bounds = calculateBounds(coords, currentRoute?.currentLocation);
     map.current.fitBounds([
       [bounds.south, bounds.west],
       [bounds.north, bounds.east]
     ], { padding: [40, 40] });
     
     // Draw route path if available
-    if (currentRoute && currentRoute.coordinates.length > 0) {
-      // Convert from [lng, lat] to [lat, lng] format for Leaflet
-      const routePoints = currentRoute.coordinates.map(coord => [coord[1], coord[0]] as [number, number]);
-      routeLayerRef.current = L.polyline(routePoints, {
-        color: '#0f172a',
-        weight: 4,
-        opacity: 0.75
-      }).addTo(map.current);
+    if (currentRoute && currentRoute.coordinates && currentRoute.coordinates.length > 0) {
+      // For Leaflet, we need [lat, lng] points
+      const routePoints: [number, number][] = [];
+      
+      for (const coord of currentRoute.coordinates) {
+        // Ensure we have both latitude and longitude
+        if (coord.length >= 2) {
+          // Map coordinates are in [lng, lat] format, convert to [lat, lng]
+          routePoints.push([coord[1], coord[0]]);
+        }
+      }
+      
+      // Draw the route as a polyline
+      if (routePoints.length > 0) {
+        routeLayerRef.current = L.polyline(routePoints, {
+          color: '#3b82f6', // Blue color for the route
+          weight: 5,
+          opacity: 0.75,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(map.current);
+        
+        // Highlight active segment if turn-by-turn is active
+        if (showActiveStepDirections && currentRoute.steps && activeStepIndex < currentRoute.steps.length) {
+          // This is a simplified version - in a real app we would highlight the specific segment
+          // Here we're just making the line more prominent
+          routeLayerRef.current.setStyle({
+            color: '#2563eb', // Darker blue
+            weight: 6,
+            opacity: 0.9
+          });
+        }
+      }
     }
-  }, [addresses, mapLoaded, currentRoute, activeAddressId]);
+  }, [addresses, mapLoaded, currentRoute, activeAddressId, showActiveStepDirections, activeStepIndex]);
   
+  // Additional effect to handle map size changes when fullScreen prop changes
+  useEffect(() => {
+    if (map.current && mapLoaded) {
+      // Force a resize event after a slight delay to ensure the container has been resized
+      setTimeout(() => {
+        map.current?.invalidateSize();
+      }, 100);
+    }
+  }, [fullScreen, mapLoaded]);
+
   return (
-    <Card>
+    <Card className={fullScreen ? "h-full" : ""}>
       <CardHeader className="p-4 border-b border-primary-200">
-        <h2 className="text-lg font-semibold">Route Preview</h2>
+        <h2 className="text-lg font-semibold">{title}</h2>
       </CardHeader>
       
       <CardContent className="p-0">
-        <div className="relative">
+        <div className={`relative ${fullScreen ? "h-[calc(100vh-12rem)]" : ""}`}>
           <div 
             ref={mapContainer} 
-            className="h-96 w-full"
+            className={fullScreen ? "h-full w-full" : "h-96 w-full"}
           >
             {isLoading && (
               <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 z-10">
@@ -141,6 +273,24 @@ export function DeliveryMap({ addresses, currentRoute, isLoading = false, active
               </div>
             )}
           </div>
+          
+          {/* Current direction indicator */}
+          {showActiveStepDirections && currentRoute?.steps && activeStepIndex < currentRoute.steps.length && (
+            <div className="absolute bottom-4 left-4 right-4 bg-white bg-opacity-90 rounded-lg p-3 shadow-lg border border-primary-100">
+              <div className="flex items-center">
+                <div className="bg-primary-100 p-2 rounded-full mr-3">
+                  <Navigation2 className="h-6 w-6 text-primary-700" />
+                </div>
+                <div>
+                  <p className="font-medium">{currentRoute.steps[activeStepIndex].instruction}</p>
+                  <div className="flex text-sm text-primary-600 mt-1">
+                    <span className="mr-3">{currentRoute.steps[activeStepIndex].distance}</span>
+                    <span>{currentRoute.steps[activeStepIndex].duration}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </CardContent>
     </Card>

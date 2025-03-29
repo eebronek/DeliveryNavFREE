@@ -23,6 +23,7 @@ import {
 import { format } from 'date-fns';
 import { DeliveryMap } from '@/components/delivery-map';
 import { toast } from '@/hooks/use-toast';
+import { AdBanner } from '@/components/ad-banner';
 
 const TABS = [
   { name: 'Plan Route', href: '/' },
@@ -129,6 +130,13 @@ export default function SummaryPage() {
       <Header />
       
       <TabNavigation tabs={TABS} />
+      
+      {/* Non-intrusive ad banner */}
+      <div className="bg-gray-50 border-b border-t border-gray-200">
+        <div className="max-w-screen-lg mx-auto py-2 flex justify-center">
+          <AdBanner size="leaderboard" />
+        </div>
+      </div>
       
       <main className="flex-1 container mx-auto px-4 sm:px-6 py-6">
         <Card className="mb-6">
