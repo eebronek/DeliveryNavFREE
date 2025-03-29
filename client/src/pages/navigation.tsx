@@ -246,13 +246,18 @@ export default function NavigationPage() {
     }
   };
   
-  // Open external navigation app
+  // Switch to full-screen turn-by-turn navigation
   const handleOpenDirections = () => {
     if (!currentAddress) return;
     
-    // Construct Google Maps URL
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(currentAddress.fullAddress)}`;
-    window.open(url, '_blank');
+    // Turn on both turn-by-turn mode and full screen
+    setShowTurnByTurn(true);
+    setFullScreenMap(true);
+    
+    toast({
+      title: "Turn-by-Turn Navigation",
+      description: "Follow the on-screen directions to your destination.",
+    });
   };
   
   // Handle fake call button

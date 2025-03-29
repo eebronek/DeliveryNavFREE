@@ -4,7 +4,10 @@ import { DeliveryStatus, RouteSettings } from "@shared/schema";
 // Nominatim (OpenStreetMap) geocoding API base URL
 const NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org";
 
-// OpenRouteService API base URL
+// OSRM API base URL (free routing service)
+const OSRM_BASE_URL = "https://router.project-osrm.org";
+
+// OpenRouteService API base URL (not used, keeping for reference)
 const OPENROUTE_BASE_URL = "https://api.openrouteservice.org";
 
 // Cache for geocoded addresses to minimize API calls
@@ -203,14 +206,14 @@ export async function calculateRoute(
       }
     }
     
-    // Try to get real routing from OpenRouteService if available
+    // Try to get real routing from OSRM (free OpenStreetMap routing service)
     let realRouteCoordinates: [number, number][] = [];
     let realRouteSteps: RouteStep[] = [];
     let realRouteTotalDistance = 0;
     let realRouteTotalDuration = 0;
     
     try {
-      // Prepare waypoints for OpenRouteService (they use [longitude, latitude] format)
+      // Prepare waypoints for OSRM (they use [longitude, latitude] format)
       const waypoints = optimizedWaypoints.map(addr => [addr.position[1], addr.position[0]]);
       
       // Add current location as the first waypoint if available
@@ -218,66 +221,144 @@ export async function calculateRoute(
         waypoints.unshift([currentLocation.lng, currentLocation.lat]);
       }
       
-      // Now generate detailed directions with turns, streets, etc.
-      realRouteSteps = [];
-      let cumulativeDistance = 0;
-      
-      for (let i = 0; i < optimizedWaypoints.length - 1; i++) {
-        const fromAddr = optimizedWaypoints[i];
-        const toAddr = optimizedWaypoints[i + 1];
+      if (waypoints.length >= 2) {
+        // For each segment, get directions from OSRM
+        realRouteSteps = [];
+        let cumulativeDistance = 0;
+        let totalCoordinates: [number, number][] = [];
         
-        // Calculate direct distance and bearing between points
-        const distance = calculateHaversineDistance(
-          fromAddr.position[0], fromAddr.position[1],
-          toAddr.position[0], toAddr.position[1]
-        );
-        
-        const bearing = calculateBearing(
-          fromAddr.position[0], fromAddr.position[1],
-          toAddr.position[0], toAddr.position[1]
-        );
-        
-        cumulativeDistance += distance;
-        
-        // Generate turn-by-turn directions
-        const directions = generateTurnByTurnDirections(
-          fromAddr.fullAddress,
-          toAddr.fullAddress,
-          distance,
-          bearing
-        );
-        
-        // Add each direction as a step
-        directions.forEach((dir, index) => {
-          const isLast = index === directions.length - 1;
-          const estDuration = (dir.distance / 30) * 60; // minutes at 30mph
+        for (let i = 0; i < waypoints.length - 1; i++) {
+          const start = waypoints[i];
+          const end = waypoints[i + 1];
           
-          realRouteSteps.push({
-            instruction: dir.instruction,
-            distance: `${dir.distance.toFixed(1)} mi`,
-            duration: `${Math.round(estDuration)} min`,
-            turnType: dir.turnType,
-            streetName: dir.streetName,
-            isDestination: isLast && i === optimizedWaypoints.length - 2
-          });
-        });
-      }
-      
-      // If we have realistic steps, connect the waypoints with direct lines for now
-      // In a real implementation, we would use the actual route geometry from the API
-      if (realRouteSteps.length > 0) {
-        // Ensure we have proper [number, number] tuples
-        realRouteCoordinates = waypoints.map(wp => {
-          if (wp.length >= 2) {
-            return [wp[0], wp[1]] as [number, number];
+          // Construct OSRM API URL for route between two points
+          // Format: /route/v1/{profile}/{coordinates}
+          // profile is "driving" for car routes
+          // coordinates are in longitude,latitude format separated by ;
+          const url = `${OSRM_BASE_URL}/route/v1/driving/${start[0]},${start[1]};${end[0]},${end[1]}?overview=full&steps=true&geometries=geojson`;
+          
+          try {
+            const response = await fetch(url);
+            if (!response.ok) throw new Error(`OSRM API returned ${response.status}`);
+            
+            const data = await response.json();
+            
+            if (data && data.routes && data.routes.length > 0) {
+              const route = data.routes[0];
+              const distanceInMiles = route.distance / 1609.34; // Convert meters to miles
+              const durationInSeconds = route.duration;
+              
+              // Add distance and duration to totals
+              cumulativeDistance += distanceInMiles;
+              realRouteTotalDuration += durationInSeconds;
+              
+              // Get route geometry (array of coordinates)
+              if (route.geometry && route.geometry.coordinates) {
+                // OSRM returns coordinates as [longitude, latitude]
+                const segmentCoordinates = route.geometry.coordinates.map((coord: number[]) => {
+                  return [coord[0], coord[1]] as [number, number];
+                });
+                
+                totalCoordinates = [...totalCoordinates, ...segmentCoordinates];
+              }
+              
+              // Process steps if available
+              if (route.legs && route.legs.length > 0 && route.legs[0].steps) {
+                const steps = route.legs[0].steps;
+                
+                // Create a step for each maneuver
+                steps.forEach((step: any, stepIndex: number) => {
+                  const isLastStep = stepIndex === steps.length - 1;
+                  const isLastSegment = i === waypoints.length - 2;
+                  
+                  // Convert distance to miles and duration to minutes
+                  const stepDistanceMiles = step.distance / 1609.34;
+                  const stepDurationMinutes = step.duration / 60;
+                  
+                  // Get instruction based on maneuver type or use OSRM's instruction
+                  let instruction = step.maneuver?.instruction || 'Continue on route';
+                  let turnType = step.maneuver?.type || 'straight';
+                  
+                  // For the final step of the final segment, make it clear this is the destination
+                  if (isLastStep && isLastSegment) {
+                    const destinationAddr = i+1 < optimizedWaypoints.length ? optimizedWaypoints[i+1] : null;
+                    if (destinationAddr) {
+                      instruction = `Arrive at ${destinationAddr.fullAddress}`;
+                      turnType = 'arrive';
+                      
+                      // Add special note for time-specific deliveries to arrive 3 minutes early
+                      if (destinationAddr.exactDeliveryTime) {
+                        instruction += ` (Arrive by ${destinationAddr.exactDeliveryTime}, aim to be 3 minutes early)`;
+                      }
+                    } else {
+                      instruction = 'Arrive at destination';
+                    }
+                  }
+                  
+                  // Extract street name if available
+                  const streetName = step.name || '';
+                  
+                  realRouteSteps.push({
+                    instruction,
+                    distance: `${stepDistanceMiles.toFixed(1)} mi`,
+                    duration: `${Math.round(stepDurationMinutes)} min`,
+                    turnType,
+                    streetName,
+                    isDestination: isLastStep && isLastSegment
+                  });
+                });
+              }
+            }
+          } catch (routeError) {
+            console.error("Error fetching segment route:", routeError);
+            // Generate fallback directions for this segment
+            const fromAddr = i < optimizedWaypoints.length ? optimizedWaypoints[i] : null;
+            const toAddr = i+1 < optimizedWaypoints.length ? optimizedWaypoints[i+1] : null;
+            
+            if (fromAddr && toAddr) {
+              // Calculate direct distance and bearing between points
+              const distance = calculateHaversineDistance(
+                fromAddr.position[0], fromAddr.position[1],
+                toAddr.position[0], toAddr.position[1]
+              );
+              
+              const bearing = calculateBearing(
+                fromAddr.position[0], fromAddr.position[1],
+                toAddr.position[0], toAddr.position[1]
+              );
+              
+              cumulativeDistance += distance;
+              
+              // Generate simple directions
+              realRouteSteps.push({
+                instruction: `Head to ${toAddr.fullAddress}`,
+                distance: `${distance.toFixed(1)} mi`,
+                duration: `${Math.round((distance / 30) * 60)} min`, // minutes at 30mph
+                isDestination: i === waypoints.length - 2
+              });
+              
+              // Add direct line coordinates
+              totalCoordinates.push([fromAddr.position[1], fromAddr.position[0]]);
+              totalCoordinates.push([toAddr.position[1], toAddr.position[0]]);
+            }
           }
-          // Fallback in case of incomplete coordinates
-          return [0, 0] as [number, number];
-        });
+        }
+        
+        // Use the accumulated route coordinates
+        if (totalCoordinates.length > 0) {
+          realRouteCoordinates = totalCoordinates;
+        }
         
         realRouteTotalDistance = cumulativeDistance;
-        // Estimate total duration based on distance (30mph average)
-        realRouteTotalDuration = (realRouteTotalDistance / 30) * 3600; // seconds
+      } else {
+        // If we only have one waypoint, create a simple arrival step
+        const destination = optimizedWaypoints[0];
+        realRouteSteps = [{
+          instruction: `Arrive at ${destination.fullAddress}`,
+          distance: '0.0 mi',
+          duration: '0 min',
+          isDestination: true
+        }];
       }
     } catch (error) {
       console.error("Error getting detailed routing:", error);

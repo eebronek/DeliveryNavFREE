@@ -37,6 +37,7 @@ export function DeliveryMap({
   const markersRef = useRef<L.Marker[]>([]);
   const currentLocationMarkerRef = useRef<L.Marker | null>(null);
   const routeLayerRef = useRef<L.Polyline | null>(null);
+  const roadOutlineRef = useRef<L.Polyline | null>(null);
   const [mapLoaded, setMapLoaded] = useState(false);
 
   // Initialize map on component mount
@@ -97,7 +98,7 @@ export function DeliveryMap({
     };
     
     // Add the custom control to the map
-    const locateControl = L.control({position: 'topleft'});
+    const locateControl = new L.Control({position: 'topleft'});
     locateControl.onAdd = addLocateControl;
     locateControl.addTo(map.current);
     
@@ -126,10 +127,16 @@ export function DeliveryMap({
       currentLocationMarkerRef.current = null;
     }
     
-    // Clear previous route
+    // Clear previous routes
     if (routeLayerRef.current) {
       routeLayerRef.current.remove();
       routeLayerRef.current = null;
+    }
+    
+    // Clear road outline
+    if (roadOutlineRef.current) {
+      roadOutlineRef.current.remove();
+      roadOutlineRef.current = null;
     }
     
     if (addresses.length === 0 && !currentRoute?.currentLocation) return;
@@ -223,10 +230,20 @@ export function DeliveryMap({
       
       // Draw the route as a polyline
       if (routePoints.length > 0) {
+        // Add an offset polyline for a road-like appearance
+        roadOutlineRef.current = L.polyline(routePoints, {
+          color: '#334155', // Slate-700 for road outline
+          weight: 8,
+          opacity: 0.6,
+          lineCap: 'round',
+          lineJoin: 'round'
+        }).addTo(map.current);
+        
+        // Main route polyline
         routeLayerRef.current = L.polyline(routePoints, {
           color: '#3b82f6', // Blue color for the route
           weight: 5,
-          opacity: 0.75,
+          opacity: 0.8,
           lineCap: 'round',
           lineJoin: 'round'
         }).addTo(map.current);
@@ -238,8 +255,41 @@ export function DeliveryMap({
           routeLayerRef.current.setStyle({
             color: '#2563eb', // Darker blue
             weight: 6,
-            opacity: 0.9
+            opacity: 1
           });
+          
+          // Add pulsing animation for active route using a dot at the current position
+          // This helps to show the active navigation point
+          if (currentRoute.currentLocation) {
+            const pulsingIcon = L.divIcon({
+              className: 'pulsing-icon',
+              html: `<div style="
+                width: 15px;
+                height: 15px;
+                background-color: #2563eb;
+                border-radius: 50%;
+                border: 2px solid white;
+                box-shadow: 0 0 10px #2563eb;
+                animation: pulse 1.5s infinite;
+              "></div>
+              <style>
+                @keyframes pulse {
+                  0% { transform: scale(0.8); opacity: 1; }
+                  70% { transform: scale(1.5); opacity: 0.7; }
+                  100% { transform: scale(0.8); opacity: 1; }
+                }
+              </style>`,
+              iconSize: [15, 15],
+              iconAnchor: [7.5, 7.5]
+            });
+            
+            // Add a pulsing dot at the start of the route 
+            // (for now just using the current location; in a real app would use GPS position)
+            L.marker([currentRoute.currentLocation.lat, currentRoute.currentLocation.lng], {
+              icon: pulsingIcon,
+              zIndexOffset: 1001
+            }).addTo(map.current);
+          }
         }
       }
     }
@@ -275,17 +325,20 @@ export function DeliveryMap({
           </div>
           
           {/* Current direction indicator */}
-          {showActiveStepDirections && currentRoute?.steps && activeStepIndex < currentRoute.steps.length && (
+          {showActiveStepDirections && currentRoute?.steps && currentRoute.steps.length > 0 && activeStepIndex < currentRoute.steps.length && (
             <div className="absolute bottom-4 left-4 right-4 bg-white bg-opacity-90 rounded-lg p-3 shadow-lg border border-primary-100">
               <div className="flex items-center">
                 <div className="bg-primary-100 p-2 rounded-full mr-3">
                   <Navigation2 className="h-6 w-6 text-primary-700" />
                 </div>
-                <div>
+                <div className="flex-1">
                   <p className="font-medium">{currentRoute.steps[activeStepIndex].instruction}</p>
                   <div className="flex text-sm text-primary-600 mt-1">
                     <span className="mr-3">{currentRoute.steps[activeStepIndex].distance}</span>
                     <span>{currentRoute.steps[activeStepIndex].duration}</span>
+                    {currentRoute.steps[activeStepIndex].streetName && (
+                      <span className="ml-auto italic">{currentRoute.steps[activeStepIndex].streetName}</span>
+                    )}
                   </div>
                 </div>
               </div>
