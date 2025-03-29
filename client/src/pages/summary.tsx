@@ -14,7 +14,7 @@ import {
 } from '@/components/ui/card';
 import { 
   FileDown, 
-  FilePdf, 
+  FileText, 
   Plus, 
   Clock, 
   Route, 
@@ -235,7 +235,7 @@ export default function SummaryPage() {
                 <FileDown className="mr-2 h-4 w-4" /> Export CSV
               </Button>
               <Button variant="outline" onClick={handleExportPDF}>
-                <FilePdf className="mr-2 h-4 w-4" /> Export PDF
+                <FileText className="mr-2 h-4 w-4" /> Export PDF
               </Button>
               <Button onClick={handleNewRoute}>
                 <Plus className="mr-2 h-4 w-4" /> New Route

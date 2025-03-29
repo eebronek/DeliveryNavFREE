@@ -2,7 +2,8 @@ import {
   User, InsertUser, 
   Address, InsertAddress, DeliveryStatus,
   RouteSettings, InsertRouteSettings,
-  Route, InsertRoute 
+  Route, InsertRoute,
+  TimeWindow, Priority
 } from "@shared/schema";
 
 // modify the interface with any CRUD methods
@@ -75,7 +76,7 @@ export class MemStorage implements IStorage {
   
   // Address methods
   async getAllAddresses(): Promise<Address[]> {
-    return Array.from(this.addresses.values()).sort((a, b) => (a.sequence || 0) - (b.sequence || 0));
+    return Array.from(this.addresses.values()).sort((a, b) => (a.sequence ?? 0) - (b.sequence ?? 0));
   }
   
   async getAddress(id: number): Promise<Address | undefined> {
@@ -88,11 +89,16 @@ export class MemStorage implements IStorage {
     const newAddress: Address = {
       ...address,
       id,
-      createdAt: now,
-      updatedAt: now,
+      latitude: null,
+      longitude: null,
       status: DeliveryStatus.PENDING,
       sequence: this.addresses.size,
-      deliveredAt: undefined,
+      deliveredAt: null,
+      // Default values for optional fields
+      specialInstructions: address.specialInstructions || null,
+      timeWindow: address.timeWindow || TimeWindow.ANY,
+      priority: address.priority || Priority.NORMAL,
+      userId: address.userId || null,
     };
     this.addresses.set(id, newAddress);
     return newAddress;
@@ -107,7 +113,6 @@ export class MemStorage implements IStorage {
     const updatedAddress = {
       ...address,
       ...data,
-      updatedAt: new Date(),
     };
     
     this.addresses.set(id, updatedAddress);
@@ -125,13 +130,17 @@ export class MemStorage implements IStorage {
   
   async createRouteSettings(settings: InsertRouteSettings): Promise<RouteSettings> {
     const id = this.routeSettingsId;
-    const now = new Date();
     
     const newSettings: RouteSettings = {
-      ...settings,
       id,
-      createdAt: now,
-      updatedAt: now,
+      shortestDistance: settings.shortestDistance || true,
+      realTimeTraffic: settings.realTimeTraffic || true,
+      avoidHighways: settings.avoidHighways || false,
+      avoidTolls: settings.avoidTolls || false,
+      minimizeLeftTurns: settings.minimizeLeftTurns || false,
+      startingPoint: settings.startingPoint || "Current Location",
+      returnToStart: settings.returnToStart || false,
+      userId: settings.userId || null,
     };
     
     this.routeSettings = newSettings;
@@ -146,7 +155,6 @@ export class MemStorage implements IStorage {
     const updatedSettings = {
       ...this.routeSettings,
       ...data,
-      updatedAt: new Date(),
     };
     
     this.routeSettings = updatedSettings;
@@ -156,7 +164,10 @@ export class MemStorage implements IStorage {
   // Route methods
   async getAllRoutes(): Promise<Route[]> {
     return Array.from(this.routes.values()).sort((a, b) => {
-      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+      // Since createdAt can be null, provide safe comparison
+      const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
     });
   }
   
@@ -169,10 +180,13 @@ export class MemStorage implements IStorage {
     const now = new Date();
     
     const newRoute: Route = {
-      ...route,
       id,
+      totalDistance: route.totalDistance || null,
+      totalTime: route.totalTime || null,
+      fuelUsed: route.fuelUsed || null,
+      completed: route.completed || false,
+      userId: route.userId || null,
       createdAt: now,
-      updatedAt: now,
     };
     
     this.routes.set(id, newRoute);
@@ -188,7 +202,6 @@ export class MemStorage implements IStorage {
     const updatedRoute = {
       ...route,
       ...data,
-      updatedAt: new Date(),
     };
     
     this.routes.set(id, updatedRoute);

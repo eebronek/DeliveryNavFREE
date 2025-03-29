@@ -11,7 +11,7 @@ export function Header() {
       <div className="container mx-auto px-4 sm:px-6 py-4 flex justify-between items-center">
         <div className="flex items-center space-x-2">
           <Link href="/">
-            <a className="text-primary-900 text-xl font-bold">RouteOptima</a>
+            <a className="text-primary-900 text-xl font-bold">DeliveryNav</a>
           </Link>
         </div>
         

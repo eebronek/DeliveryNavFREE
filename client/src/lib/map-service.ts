@@ -16,7 +16,7 @@ export async function geocodeAddress(address: string): Promise<Coordinates | nul
     const response = await fetch(`${NOMINATIM_BASE_URL}/search?${params.toString()}`, {
       headers: {
         // Nominatim requires a User-Agent header
-        "User-Agent": "RouteOptima/1.0"
+        "User-Agent": "DeliveryNav/1.0"
       }
     });
     
