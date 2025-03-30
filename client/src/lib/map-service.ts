@@ -244,11 +244,14 @@ export async function calculateRoute(
           // coordinates are in longitude,latitude format separated by ;
           const url = `${OSRM_BASE_URL}/route/v1/driving/${start[0]},${start[1]};${end[0]},${end[1]}?overview=full&steps=true&geometries=geojson`;
           
+          console.log(`Requesting turn-by-turn directions for segment ${i+1}/${waypoints.length-1}:`, url);
+          
           try {
             const response = await fetch(url);
             if (!response.ok) throw new Error(`OSRM API returned ${response.status}`);
             
             const data = await response.json();
+            console.log(`OSRM response for segment ${i+1}:`, data.code === 'Ok' ? 'SUCCESS' : 'FAILED', data);
             
             if (data && data.routes && data.routes.length > 0) {
               const route = data.routes[0];

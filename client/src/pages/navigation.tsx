@@ -110,6 +110,8 @@ export default function NavigationPage() {
       
       setIsLoading(true);
       try {
+        console.log("Starting navigation with addresses:", addresses);
+        
         // Geocode addresses that don't have lat/lng
         const geocodedAddresses: AddressWithCoordinates[] = [];
         
@@ -118,6 +120,7 @@ export default function NavigationPage() {
           const existingAddress = addressesWithCoordinates.find(a => a.id === address.id);
           if (existingAddress) {
             geocodedAddresses.push(existingAddress);
+            console.log(`Using cached coordinates for ${address.fullAddress}`);
             continue;
           }
           
@@ -128,14 +131,19 @@ export default function NavigationPage() {
               ...address,
               position: [coords.lat, coords.lng]
             });
+            console.log(`Successfully geocoded ${address.fullAddress} to:`, coords);
+          } else {
+            console.error(`Could not geocode address: ${address.fullAddress}`);
           }
         }
         
         setAddressesWithCoordinates(geocodedAddresses);
+        console.log(`Successfully geocoded ${geocodedAddresses.length} addresses`);
         
         // Calculate route if we have at least 1 address and route settings
         if (geocodedAddresses.length >= 1 && routeSettings) {
           try {
+            console.log("Calculating route with user's current location");
             // Get the user's current location and calculate route from there
             const route = await calculateRoute(
               geocodedAddresses, 
@@ -144,6 +152,11 @@ export default function NavigationPage() {
             );
             
             if (route) {
+              console.log("Route calculation successful:", route);
+              
+              // Immediately enable turn-by-turn directions
+              setShowTurnByTurn(true);
+              
               setRoutePath({
                 coordinates: route.coordinates || [],
                 steps: route.steps,
@@ -152,11 +165,17 @@ export default function NavigationPage() {
               
               // Reset active step index when route changes
               setActiveStepIndex(0);
+              
+              toast({
+                title: "Navigation Ready",
+                description: `Route optimized based on your current location. ${route.steps.length} turn-by-turn directions available.`,
+              });
             }
           } catch (error) {
             console.error('Error calculating route with current location:', error);
             
             // Fall back to route without current location
+            console.log("Falling back to route without current location");
             const fallbackRoute = await calculateRoute(geocodedAddresses, routeSettings);
             if (fallbackRoute) {
               setRoutePath({
