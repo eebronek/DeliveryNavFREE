@@ -378,7 +378,20 @@ export default function NavigationPage() {
       {/* Non-intrusive ad banner */}
       <div className="bg-gray-50 border-b border-t border-gray-200">
         <div className="max-w-screen-lg mx-auto py-2 flex justify-center">
-          <AdBanner size="leaderboard" />
+          <AdBanner 
+            size="leaderboard" 
+            adCode={`
+              <!-- Your AdSense code here -->
+              <ins class="adsbygoogle"
+                style="display:inline-block;width:728px;height:90px"
+                data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+                data-ad-slot="XXXXXXXXXX">
+              </ins>
+              <script>
+                (adsbygoogle = window.adsbygoogle || []).push({});
+              </script>
+            `}
+          />
         </div>
       </div>
       
