@@ -111,23 +111,27 @@ export function DeliveryMap({
       const button = L.DomUtil.create('a', '', controlDiv);
       
       button.href = '#';
-      button.title = 'Zoom in closer to see turns';
+      button.title = 'Center on my location and zoom in';
       button.style.display = 'flex';
       button.style.alignItems = 'center';
       button.style.justifyContent = 'center';
-      button.style.width = '30px';
-      button.style.height = '30px';
+      button.style.width = '40px'; // Wider button for better visibility
+      button.style.height = '40px'; // Taller button for better visibility
       button.style.backgroundColor = '#3b82f6'; // Blue background
       button.style.color = 'white'; // White icon
       button.style.fontWeight = 'bold';
+      button.style.borderRadius = '4px'; // Slightly rounded corners
+      button.style.boxShadow = '0 2px 4px rgba(0,0,0,0.2)'; // Add shadow for depth
       
-      // Set button content
+      // Set button content with My Location icon (similar to Google Maps)
       button.innerHTML = `
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
-          <circle cx="11" cy="11" r="8"></circle>
-          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          <line x1="11" y1="8" x2="11" y2="14"></line>
-          <line x1="8" y1="11" x2="14" y2="11"></line>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="20" height="20">
+          <circle cx="12" cy="12" r="10"></circle>
+          <circle cx="12" cy="12" r="3"></circle>
+          <line x1="12" y1="2" x2="12" y2="4"></line>
+          <line x1="12" y1="20" x2="12" y2="22"></line>
+          <line x1="4" y1="12" x2="2" y2="12"></line>
+          <line x1="22" y1="12" x2="20" y2="12"></line>
         </svg>
       `;
       
@@ -135,7 +139,18 @@ export function DeliveryMap({
       L.DomEvent.on(button, 'click', (e) => {
         L.DomEvent.preventDefault(e);
         
-        // Check if we should focus on the active address
+        // Prioritize centering on current location if available
+        if (currentRoute?.currentLocation) {
+          // Center on current location with high zoom level
+          map.setView(
+            [currentRoute.currentLocation.lat, currentRoute.currentLocation.lng], 
+            19 // Very high zoom level to see details clearly
+          );
+          console.log(`Zoomed in to current location: ${currentRoute.currentLocation.lat}, ${currentRoute.currentLocation.lng}`);
+          return;
+        }
+        
+        // If no current location, check if we should focus on the active address
         if (activeAddressId && addresses.length > 0) {
           // Find the active address
           const activeAddress = addresses.find(a => a.id === activeAddressId);
@@ -160,12 +175,6 @@ export function DeliveryMap({
             padding: [40, 40],
             maxZoom: 18 // Increased max zoom level for better turn visibility
           });
-        } else if (currentRoute?.currentLocation) {
-          // If no addresses but we have a current location, center on that
-          map.setView(
-            [currentRoute.currentLocation.lat, currentRoute.currentLocation.lng], 
-            18 // Increased zoom level
-          );
         }
       });
       
