@@ -16,8 +16,11 @@ const geocodeCache = new Map<string, Coordinates>();
 // Geocoding function to get coordinates for an address using Nominatim API
 export async function geocodeAddress(address: string): Promise<Coordinates | null> {
   try {
+    console.log(`Attempting to geocode address: ${address}`);
+    
     // Check cache first
     if (geocodeCache.has(address)) {
+      console.log(`Using cached coordinates for: ${address}`);
       return geocodeCache.get(address)!;
     }
     
@@ -27,6 +30,7 @@ export async function geocodeAddress(address: string): Promise<Coordinates | nul
       limit: "1",
     });
     
+    console.log(`Making geocoding request for: ${address}`);
     const response = await fetch(`${NOMINATIM_BASE_URL}/search?${params.toString()}`, {
       headers: {
         // Nominatim requires a User-Agent header
@@ -39,8 +43,10 @@ export async function geocodeAddress(address: string): Promise<Coordinates | nul
     }
     
     const data = await response.json();
+    console.log(`Geocoding response for "${address}":`, data);
     
     if (!data || data.length === 0) {
+      console.warn(`No geocoding results found for: ${address}`);
       return null;
     }
     
@@ -49,13 +55,14 @@ export async function geocodeAddress(address: string): Promise<Coordinates | nul
     const lng = parseFloat(data[0].lon);
     
     const coordinates = { lat, lng };
+    console.log(`Successfully geocoded ${address} to:`, coordinates);
     
     // Cache the result
     geocodeCache.set(address, coordinates);
     
     return coordinates;
   } catch (error) {
-    console.error("Error geocoding address:", error);
+    console.error(`Error geocoding address: ${address}`, error);
     return null;
   }
 }
