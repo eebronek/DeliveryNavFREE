@@ -385,17 +385,33 @@ export default function NavigationPage() {
       <main className="flex-1">
         <div className="h-[calc(100vh-120px)] relative">
           {/* Map with active navigation */}
-          <DeliveryMap
-            addresses={addressesWithCoordinates}
-            currentRoute={routePath}
-            isLoading={isLoading}
-            activeAddressId={currentAddress?.id}
-            showActiveStepDirections={showTurnByTurn && !showRouteOverview}
-            activeStepIndex={activeStepIndex}
-            fullScreen={fullScreenMap}
-            title={fullScreenMap ? (showRouteOverview ? "Route Overview" : "Live Navigation") : "Route Preview"}
-            showRouteOverview={showRouteOverview}
-          />
+          <div className="relative">
+            <DeliveryMap
+              addresses={addressesWithCoordinates}
+              currentRoute={routePath}
+              isLoading={isLoading}
+              activeAddressId={currentAddress?.id}
+              showActiveStepDirections={showTurnByTurn && !showRouteOverview}
+              activeStepIndex={activeStepIndex}
+              fullScreen={fullScreenMap}
+              title={fullScreenMap ? (showRouteOverview ? "Route Overview" : "Live Navigation") : "Route Preview"}
+              showRouteOverview={showRouteOverview}
+            />
+            
+            {/* Floating Next Button in Top Right Corner */}
+            {currentAddressIndex < totalAddresses - 1 && (
+              <div className="absolute top-16 right-4 z-50">
+                <Button 
+                  variant="default"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full shadow-lg flex items-center"
+                  onClick={handleNext}
+                >
+                  <span className="mr-2 text-lg">NEXT</span>
+                  <ArrowRight className="h-5 w-5" />
+                </Button>
+              </div>
+            )}
+          </div>
           
           {/* Navigation Overlay */}
           {currentAddress && (
