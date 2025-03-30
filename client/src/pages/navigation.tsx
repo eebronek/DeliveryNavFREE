@@ -256,6 +256,21 @@ export default function NavigationPage() {
   const handlePrevious = () => {
     if (currentAddressIndex > 0) {
       setCurrentAddressIndex(currentAddressIndex - 1);
+      
+      // Enable turn-by-turn directions automatically
+      setShowTurnByTurn(true);
+      
+      // Reset the active step index to 0 when navigating to a new address
+      setActiveStepIndex(0);
+      
+      // Add a toast notification
+      toast({
+        title: "Navigating to previous address",
+        description: `Now showing directions to ${addresses[currentAddressIndex - 1]?.fullAddress || 'previous location'}`,
+      });
+      
+      // Disable route overview when navigating to a specific address
+      setShowRouteOverview(false);
     }
   };
   
@@ -263,6 +278,24 @@ export default function NavigationPage() {
   const handleNext = () => {
     if (currentAddressIndex < totalAddresses - 1) {
       setCurrentAddressIndex(currentAddressIndex + 1);
+      
+      // Enable turn-by-turn directions automatically when moving to the next address
+      setShowTurnByTurn(true);
+      
+      // Reset the active step index to 0 when navigating to a new address
+      setActiveStepIndex(0);
+      
+      // Add a toast notification
+      toast({
+        title: "Navigating to next address",
+        description: `Now showing directions to ${addresses[currentAddressIndex + 1]?.fullAddress || 'next location'}`,
+      });
+      
+      // Set full screen mode for better visibility during navigation
+      setFullScreenMap(true);
+      
+      // Disable route overview when navigating to a specific address
+      setShowRouteOverview(false);
     }
   };
   
@@ -316,6 +349,24 @@ export default function NavigationPage() {
   const jumpToAddress = (index: number) => {
     setCurrentAddressIndex(index);
     setIsAllStopsDialogOpen(false);
+    
+    // Enable turn-by-turn directions automatically
+    setShowTurnByTurn(true);
+    
+    // Reset the active step index to 0 when navigating to a new address
+    setActiveStepIndex(0);
+    
+    // Add a toast notification
+    toast({
+      title: "Navigating to selected address",
+      description: `Now showing directions to ${addresses[index]?.fullAddress || 'selected location'}`,
+    });
+    
+    // Set full screen mode for better visibility during navigation
+    setFullScreenMap(true);
+    
+    // Disable route overview when navigating to a specific address
+    setShowRouteOverview(false);
   };
   
   return (
@@ -400,6 +451,19 @@ export default function NavigationPage() {
           {/* Navigation Controls */}
           <div className="absolute bottom-4 left-4 right-4">
             <Card className="bg-white rounded-lg shadow-lg p-4 mx-auto max-w-md">
+              {/* Prominent Next button at the top if we're not on the last address */}
+              {currentAddressIndex < totalAddresses - 1 && (
+                <Button 
+                  variant="default"
+                  className="w-full mb-3 bg-blue-500 hover:bg-blue-600 text-lg py-6 font-bold"
+                  onClick={handleNext}
+                >
+                  <Navigation2 className="mr-2 h-5 w-5" /> 
+                  NEXT: Navigate to {addresses[currentAddressIndex + 1]?.fullAddress || 'next address'}
+                  <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+              )}
+              
               <div className="grid grid-cols-3 gap-3">
                 <Button variant="outline" onClick={handlePrevious} disabled={currentAddressIndex === 0}>
                   <ArrowLeft className="h-4 w-4" />

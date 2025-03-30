@@ -111,7 +111,7 @@ export function DeliveryMap({
       const button = L.DomUtil.create('a', '', controlDiv);
       
       button.href = '#';
-      button.title = 'Zoom in and center route';
+      button.title = 'Zoom in closer to see turns';
       button.style.display = 'flex';
       button.style.alignItems = 'center';
       button.style.justifyContent = 'center';
@@ -119,6 +119,7 @@ export function DeliveryMap({
       button.style.height = '30px';
       button.style.backgroundColor = '#3b82f6'; // Blue background
       button.style.color = 'white'; // White icon
+      button.style.fontWeight = 'bold';
       
       // Set button content
       button.innerHTML = `
@@ -134,7 +135,20 @@ export function DeliveryMap({
       L.DomEvent.on(button, 'click', (e) => {
         L.DomEvent.preventDefault(e);
         
-        // Recalculate bounds and center the map
+        // Check if we should focus on the active address
+        if (activeAddressId && addresses.length > 0) {
+          // Find the active address
+          const activeAddress = addresses.find(a => a.id === activeAddressId);
+          
+          if (activeAddress) {
+            // Zoom in much closer to the active address
+            map.setView([activeAddress.position[0], activeAddress.position[1]], 18);
+            console.log(`Zoomed in to active address: ${activeAddress.fullAddress}`);
+            return;
+          }
+        }
+        
+        // Otherwise recalculate bounds and center the map
         if (addresses.length > 0) {
           const coords = addresses.map(a => ({ lat: a.position[0], lng: a.position[1] }));
           const bounds = calculateBounds(coords, currentRoute?.currentLocation);
@@ -144,13 +158,13 @@ export function DeliveryMap({
             [bounds.north, bounds.east]
           ], { 
             padding: [40, 40],
-            maxZoom: 16 
+            maxZoom: 18 // Increased max zoom level for better turn visibility
           });
         } else if (currentRoute?.currentLocation) {
           // If no addresses but we have a current location, center on that
           map.setView(
             [currentRoute.currentLocation.lat, currentRoute.currentLocation.lng], 
-            16
+            18 // Increased zoom level
           );
         }
       });
