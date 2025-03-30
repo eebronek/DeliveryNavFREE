@@ -46,8 +46,8 @@ export function DeliveryMap({
   useEffect(() => {
     if (!mapContainer.current || map.current) return;
     
-    // Create map instance
-    map.current = L.map(mapContainer.current).setView([37.7749, -122.4194], 11);
+    // Create map instance - starting with Europe/Poland area instead of San Francisco
+    map.current = L.map(mapContainer.current).setView([50.0646, 19.9450], 8);
     
     // Add OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -252,20 +252,28 @@ export function DeliveryMap({
     }
     
     // Add markers for each address
+    console.log(`Adding markers for ${addresses.length} addresses`);
     addresses.forEach((address, index) => {
+      console.log(`Adding marker for address #${index + 1}:`, address.fullAddress, 'at position:', address.position);
+      
       const isActive = address.id === activeAddressId;
-      const marker = L.marker([address.position[0], address.position[1]], {
-        icon: createMarkerIcon(index, isActive)
-      }).addTo(map.current!);
-      
-      // Add popup with address info
-      marker.bindPopup(
-        `<strong>${address.fullAddress}</strong>` +
-        (address.specialInstructions ? `<br>${address.specialInstructions}` : '') +
-        (address.exactDeliveryTime ? `<br>Delivery time: ${address.exactDeliveryTime}` : '')
-      );
-      
-      markersRef.current.push(marker);
+      try {
+        const marker = L.marker([address.position[0], address.position[1]], {
+          icon: createMarkerIcon(index, isActive)
+        }).addTo(map.current!);
+        
+        // Add popup with address info
+        marker.bindPopup(
+          `<strong>${address.fullAddress}</strong>` +
+          (address.specialInstructions ? `<br>${address.specialInstructions}` : '') +
+          (address.exactDeliveryTime ? `<br>Delivery time: ${address.exactDeliveryTime}` : '')
+        );
+        
+        markersRef.current.push(marker);
+        console.log(`Successfully added marker for ${address.fullAddress}`);
+      } catch (error) {
+        console.error(`Error adding marker for address ${address.fullAddress}:`, error);
+      }
     });
     
     // Calculate and set bounds considering current location
@@ -367,20 +375,22 @@ export function DeliveryMap({
     if (map.current && mapLoaded) {
       // Force a resize event after a slight delay to ensure the container has been resized
       setTimeout(() => {
-        map.current?.invalidateSize();
-        
-        // If we have coords, recalculate the bounds when toggling overview mode
-        if (addresses.length > 0) {
-          const coords = addresses.map(a => ({ lat: a.position[0], lng: a.position[1] }));
-          const bounds = calculateBounds(coords, currentRoute?.currentLocation);
+        if (map.current) {
+          map.current.invalidateSize();
           
-          map.current.fitBounds([
-            [bounds.south, bounds.west],
-            [bounds.north, bounds.east]
-          ], { 
-            padding: showRouteOverview ? [60, 60] : [40, 40],
-            maxZoom: showRouteOverview ? 14 : 17 // Lower maxZoom for overview means more zoomed out
-          });
+          // If we have coords, recalculate the bounds when toggling overview mode
+          if (addresses.length > 0) {
+            const coords = addresses.map(a => ({ lat: a.position[0], lng: a.position[1] }));
+            const bounds = calculateBounds(coords, currentRoute?.currentLocation);
+            
+            map.current.fitBounds([
+              [bounds.south, bounds.west],
+              [bounds.north, bounds.east]
+            ], { 
+              padding: showRouteOverview ? [60, 60] : [40, 40],
+              maxZoom: showRouteOverview ? 14 : 17 // Lower maxZoom for overview means more zoomed out
+            });
+          }
         }
       }, 100);
     }
