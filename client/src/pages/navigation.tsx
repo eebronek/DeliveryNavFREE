@@ -398,19 +398,38 @@ export default function NavigationPage() {
               showRouteOverview={showRouteOverview}
             />
             
-            {/* Floating Next Button in Top Right Corner */}
+            {/* Floating Next Button - Extra Large and Prominent */}
             {currentAddressIndex < totalAddresses - 1 && (
-              <div className="absolute top-16 right-4 z-50">
+              <div 
+                className="fixed top-24 right-4 z-[9999]"
+                style={{
+                  filter: "drop-shadow(0 0 10px rgba(0,0,0,0.5))",
+                  animation: "pulse 2s infinite"
+                }}
+              >
                 <Button 
                   variant="default"
-                  className="bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-full shadow-lg flex items-center"
+                  className="bg-red-600 hover:bg-red-700 text-white font-extrabold py-4 px-8 rounded-full shadow-xl flex items-center border-4 border-white"
+                  style={{ 
+                    fontSize: "18px",
+                    minWidth: "120px",
+                    minHeight: "60px"
+                  }}
                   onClick={handleNext}
                 >
-                  <span className="mr-2 text-lg">NEXT</span>
-                  <ArrowRight className="h-5 w-5" />
+                  <span className="mr-2">NEXT</span>
+                  <ArrowRight className="h-6 w-6" />
                 </Button>
               </div>
             )}
+            
+            <style jsx>{`
+              @keyframes pulse {
+                0% { transform: scale(1); }
+                50% { transform: scale(1.05); }
+                100% { transform: scale(1); }
+              }
+            `}</style>
           </div>
           
           {/* Navigation Overlay */}
