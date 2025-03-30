@@ -104,6 +104,65 @@ export function DeliveryMap({
     locateControl.onAdd = addLocateControl;
     locateControl.addTo(map.current);
     
+    // Add zoom in and center control
+    const addZoomCenterControl = (map: L.Map) => {
+      // Create a custom button element
+      const controlDiv = L.DomUtil.create('div', 'leaflet-bar leaflet-control');
+      const button = L.DomUtil.create('a', '', controlDiv);
+      
+      button.href = '#';
+      button.title = 'Zoom in and center route';
+      button.style.display = 'flex';
+      button.style.alignItems = 'center';
+      button.style.justifyContent = 'center';
+      button.style.width = '30px';
+      button.style.height = '30px';
+      button.style.backgroundColor = '#3b82f6'; // Blue background
+      button.style.color = 'white'; // White icon
+      
+      // Set button content
+      button.innerHTML = `
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16">
+          <circle cx="11" cy="11" r="8"></circle>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          <line x1="11" y1="8" x2="11" y2="14"></line>
+          <line x1="8" y1="11" x2="14" y2="11"></line>
+        </svg>
+      `;
+      
+      // Add click event
+      L.DomEvent.on(button, 'click', (e) => {
+        L.DomEvent.preventDefault(e);
+        
+        // Recalculate bounds and center the map
+        if (addresses.length > 0) {
+          const coords = addresses.map(a => ({ lat: a.position[0], lng: a.position[1] }));
+          const bounds = calculateBounds(coords, currentRoute?.currentLocation);
+          
+          map.fitBounds([
+            [bounds.south, bounds.west],
+            [bounds.north, bounds.east]
+          ], { 
+            padding: [40, 40],
+            maxZoom: 16 
+          });
+        } else if (currentRoute?.currentLocation) {
+          // If no addresses but we have a current location, center on that
+          map.setView(
+            [currentRoute.currentLocation.lat, currentRoute.currentLocation.lng], 
+            16
+          );
+        }
+      });
+      
+      return controlDiv;
+    };
+    
+    // Add the zoom center control to the map
+    const zoomCenterControl = new L.Control({position: 'bottomright'});
+    zoomCenterControl.onAdd = addZoomCenterControl;
+    zoomCenterControl.addTo(map.current);
+    
     setMapLoaded(true);
     
     // Cleanup function
@@ -113,7 +172,7 @@ export function DeliveryMap({
         map.current = null;
       }
     };
-  }, []);
+  }, [addresses, currentRoute]);
   
   // Update markers and route when addresses or active address changes
   useEffect(() => {
